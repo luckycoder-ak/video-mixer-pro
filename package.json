@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:win": "npm run build && npm run tauri build",
+    "build:mac": "npm run build && npm run tauri build",
+    "build:linux": "npm run build && npm run tauri build",
+    "build:all": "node scripts/build.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
