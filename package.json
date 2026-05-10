@@ -11,7 +11,9 @@
     "build:win": "npm run build && npm run tauri build",
     "build:mac": "npm run build && npm run tauri build",
     "build:linux": "npm run build && npm run tauri build",
-    "build:all": "node scripts/build.js"
+    "build:all": "node scripts/build.js",
+    "install:all": "npm install",
+    "start": "npm run dev"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
