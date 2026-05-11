@@ -569,8 +569,8 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-fadeIn">
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] flex flex-col animate-fadeIn">
+        <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center flex-shrink-0">
           <h3 className="text-white text-lg font-semibold flex items-center gap-2">
             <span>📝</span>
             <span>{config ? '编辑配置' : '新建配置'}</span>
@@ -583,8 +583,8 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-48 bg-gray-50 border-r border-gray-200 py-4">
+        <div className="flex h-[600px]">
+          <div className="w-48 bg-gray-50 border-r border-gray-200 py-4 flex-shrink-0">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
@@ -613,7 +613,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between flex-shrink-0">
           <div className="flex gap-2">
             {currentTabIndex > 0 && (
               <button
