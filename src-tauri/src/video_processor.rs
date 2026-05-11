@@ -592,10 +592,83 @@ fn process_quadrant_mode_optimized(
 #[tauri::command]
 pub fn create_task(state: tauri::State<AppState>, config_name: String, count: usize) -> Result<Task, String> {
     info!("创建任务: config_name={}, count={}", config_name, count);
-    let task = Task::new(config_name, count);
+    let task = Task::new(config_name.clone(), count);
     let mut tasks = state.tasks.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<Task>>>| e.to_string())?;
     tasks.push(task.clone());
     info!("任务创建成功: id={}", task.id);
+    
+    let state_clone = state.inner().clone();
+    let task_id = task.id.clone();
+    
+    thread::spawn(move || {
+        info!("开始处理任务: id={}", task_id);
+        
+        let configs = match state_clone.configs.read() {
+            Ok(c) => c.clone(),
+            Err(e) => {
+                error!("获取配置失败: {}", e);
+                return;
+            }
+        };
+        
+        let config = match configs.iter().find(|c| c.name == config_name) {
+            Some(c) => c.clone(),
+            None => {
+                error!("找不到配置: {}", config_name);
+                return;
+            }
+        };
+        
+        if let Ok(mut tasks) = state_clone.tasks.write() {
+            if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                task.status = TaskStatus::Running;
+                task.started_at = Some(Utc::now());
+                info!("任务开始运行: id={}", task_id);
+            }
+        }
+        
+        for i in 0..count {
+            info!("处理第 {}/{} 个视频", i + 1, count);
+            
+            let result = process_single_mode(
+                &config.template_segments,
+                &config.video_ratio,
+                &config.audio_path,
+                config.audio_duration,
+                &format!("output_{}.mp4", i + 1),
+            );
+            
+            match result {
+                Ok(_) => {
+                    info!("第 {} 个视频处理成功", i + 1);
+                    if let Ok(mut tasks) = state_clone.tasks.write() {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                            task.completed_count += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("第 {} 个视频处理失败: {}", i + 1, e);
+                    if let Ok(mut tasks) = state_clone.tasks.write() {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                            task.status = TaskStatus::Error;
+                            task.error_message = Some(e);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        
+        if let Ok(mut tasks) = state_clone.tasks.write() {
+            if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                task.status = TaskStatus::Completed;
+                task.completed_at = Some(Utc::now());
+                info!("任务完成: id={}", task_id);
+            }
+        }
+    });
+    
     Ok(task)
 }
 
