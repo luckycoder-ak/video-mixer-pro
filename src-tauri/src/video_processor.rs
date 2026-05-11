@@ -602,11 +602,14 @@ fn process_single_mode(
     video_ratio: &str,
     audio_path: &str,
     _audio_duration: u32,
+    output_dir: &PathBuf,
     output_filename: &str,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
     let temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", Uuid::new_v4()));
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+
+    let output_path = output_dir.join(output_filename);
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
 
@@ -722,6 +725,13 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         };
         
+        let output_dir = dirs::download_dir().unwrap_or_else(|| std::env::current_dir().unwrap()).join("VideoMixerOutput").join(&task_id);
+        if let Err(e) = fs::create_dir_all(&output_dir) {
+            error!("创建输出目录失败: {}", e);
+            return;
+        }
+        info!("输出目录: {}", output_dir.display());
+        
         if let Ok(mut tasks) = tasks_clone.write() {
             if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = TaskStatus::Running;
@@ -791,6 +801,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 &config.video_ratio,
                 &config.audio_path,
                 config.audio_duration,
+                &output_dir,
                 &format!("output_{}.mp4", i + 1),
             );
             
