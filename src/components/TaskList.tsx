@@ -411,6 +411,20 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               <div className="space-y-2">
                 {[...hoveredTask.progress_steps]
                   .filter(step => !step.id.startsWith('video_')) // 不显示冗余的 video_* 步骤
+                  .filter(step => {
+                    // 只显示：
+                    // 1. init 和 finish 步骤
+                    // 2. 当前正在处理的这个视频的步骤
+                    if (step.id === 'init' || step.id === 'finish') return true;
+                    
+                    if (step.id.startsWith('segment_')) {
+                      const parts = step.id.split('_');
+                      const videoIndex = parseInt(parts[1], 10);
+                      return videoIndex === hoveredTask.current_video;
+                    }
+                    
+                    return true;
+                  })
                   .sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id))
                   .map((step) => {
                     const isSubStep = step.id.startsWith('segment_');
@@ -437,6 +451,13 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                       </div>
                     );
                   })}
+                
+                {/* 显示整体进度统计 */}
+                {hoveredTask.completed_count > 0 || hoveredTask.total_count > 0 ? (
+                  <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                    已完成: {hoveredTask.completed_count}/{hoveredTask.total_count} 个视频
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-center text-gray-500 py-4">
