@@ -39,6 +39,17 @@ function App() {
     }
   };
 
+  const refreshTasks = async () => {
+    try {
+      const freshTasks = await invoke<Task[]>('get_tasks');
+      const freshConfigs = await invoke<VideoConfig[]>('get_configs');
+      setTasks(freshTasks);
+      setConfigs(freshConfigs);
+    } catch (error) {
+      console.error('Failed to refresh tasks:', error);
+    }
+  };
+
   const getDataFilePath = async () => {
     try {
       return await invoke<string>('get_data_file_path');
@@ -158,7 +169,7 @@ function App() {
         ) : (
           <TaskList
             tasks={tasks}
-            onRefresh={loadData}
+            onRefresh={refreshTasks}
           />
         )}
       </div>
