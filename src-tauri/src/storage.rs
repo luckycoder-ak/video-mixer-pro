@@ -76,6 +76,16 @@ pub fn get_temp_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
+pub fn get_data_file_path(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let data_file = app_data_dir.join("app_data.json");
+    Ok(data_file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn save_configs(
     app: tauri::AppHandle,
     configs: Vec<super::config::VideoConfig>,

@@ -58,6 +58,7 @@ fn main() {
             storage::load_data,
             storage::save_data,
             storage::save_configs,
+            storage::get_data_file_path,
             video_processor::create_task,
             video_processor::get_tasks,
             video_processor::get_task_status,

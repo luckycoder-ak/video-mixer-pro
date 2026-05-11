@@ -39,14 +39,25 @@ function App() {
     }
   };
 
+  const getDataFilePath = async () => {
+    try {
+      return await invoke<string>('get_data_file_path');
+    } catch (error) {
+      console.error('Failed to get data file path:', error);
+      return '';
+    }
+  };
+
   const handleSaveConfig = async (config: VideoConfig) => {
     try {
-      await invoke<VideoConfig>('save_config', { config });
-      const { configs: loadedConfigs, tasks: loadedTasks } = await loadData();
-      await invoke('save_configs', { configs: loadedConfigs, tasks: loadedTasks });
+      const savedConfig = await invoke<VideoConfig>('save_config', { config });
+      const newConfigs = [...configs, savedConfig];
+      setConfigs(newConfigs);
+      await invoke('save_configs', { configs: newConfigs, tasks });
+      const filePath = await getDataFilePath();
       setShowConfigModal(false);
       setEditingConfig(null);
-      showNotification('保存成功', '配置已保存到本地文件');
+      showNotification('保存成功', `配置已保存到:\n${filePath}`);
     } catch (error) {
       showNotification('保存失败', String(error));
     }
@@ -54,9 +65,10 @@ function App() {
 
   const handleGenerate = async (config: VideoConfig, count: number) => {
     try {
-      await invoke('create_task', { configName: config.name, count });
-      const { configs: loadedConfigs, tasks: loadedTasks } = await loadData();
-      await invoke('save_configs', { configs: loadedConfigs, tasks: loadedTasks });
+      const newTask = await invoke<Task>('create_task', { configName: config.name, count });
+      const newTasks = [...tasks, newTask];
+      setTasks(newTasks);
+      await invoke('save_configs', { configs, tasks: newTasks });
       setShowGenerateModal(false);
       setGeneratingConfig(null);
       setActiveTab('tasks');
