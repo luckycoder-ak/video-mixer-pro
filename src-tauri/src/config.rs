@@ -43,6 +43,7 @@ impl VideoConfig {
         Self {
             id: Uuid::new_v4().to_string(),
             name,
+            root_folder: String::new(),
             video_ratio: "9:16".to_string(),
             audio_path: String::new(),
             audio_duration: 0,
