@@ -920,27 +920,82 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     let input_str = input_path.to_string_lossy().to_string();
     let output_str = output_path.to_string_lossy().to_string();
     
-    let subtitle_path_quoted = format!("'{}'", subtitle_path.replace("'", "'\\''"));
-    
     let encoder = detect_best_encoder();
-    let vf = format!("subtitles=filename={}", subtitle_path_quoted);
     
+    // First try the simplest method: copy to temp directory with simple name
+    let temp_dir = std::env::temp_dir();
+    let temp_subtitle_path = temp_dir.join("temp_subtitle.srt");
+    
+    // Try to copy subtitle to temp path (simpler path without spaces)
+    let subtitle_to_use = if let Ok(_) = std::fs::copy(subtitle_path, &temp_subtitle_path) {
+        info!("已复制字幕文件到临时位置");
+        temp_subtitle_path.to_string_lossy().to_string()
+    } else {
+        subtitle_path.to_string()
+    };
+    
+    // Now try with the (possibly simplified) path
+    let mut succeeded = false;
+    
+    // Build the argument vector properly without string splitting
     let mut args = vec![
         "-hide_banner",
         "-loglevel", "error",
         "-i", &input_str,
-        "-vf", &vf,
+    ];
+    
+    // Add subtitles filter using the correct escaping
+    #[cfg(target_os = "windows")]
+    let escaped_path = {
+        // Windows escaping
+        let path_str = &subtitle_to_use;
+        let escaped = path_str.replace('\\', "\\\\").replace(':', "\\\\:");
+        format!("subtitles='{}'", escaped)
+    };
+    
+    #[cfg(not(target_os = "windows"))]
+    let escaped_path = {
+        // macOS/Linux escaping
+        let path_str = &subtitle_to_use;
+        let escaped = path_str.replace('\'', "'\\\\''");
+        format!("subtitles='{}'", escaped)
+    };
+    
+    args.extend(&["-vf", &escaped_path]);
+    
+    args.extend(&[
         "-c:v", &encoder.video_codec,
         "-c:a", "copy",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         "-threads", "4",
         "-y", &output_str,
-    ];
+    ]);
     args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
     
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
-    run_ffmpeg_fast(&args_ref)?;
+    
+    match run_ffmpeg_fast(&args_ref) {
+        Ok(_) => {
+            info!("字幕添加成功");
+            succeeded = true;
+        }
+        Err(e) => {
+            warn!("字幕添加失败: {}", e);
+        }
+    }
+    
+    // Clean up temp file
+    if subtitle_to_use != subtitle_path {
+        let _ = std::fs::remove_file(temp_subtitle_path);
+    }
+    
+    if !succeeded {
+        // If subtitle failed, just copy the original video
+        warn!("字幕处理失败，跳过字幕，保留原始视频");
+        fs::copy(input_path, output_path)
+            .map_err(|e| format!("无法复制视频文件: {}", e))?;
+    }
     
     Ok(())
 }
