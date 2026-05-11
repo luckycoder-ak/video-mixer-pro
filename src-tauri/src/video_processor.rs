@@ -981,7 +981,7 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
             succeeded = true;
         }
         Err(e) => {
-            warn!("字幕添加失败: {}", e);
+            info!("字幕添加失败: {}", e);
         }
     }
     
@@ -992,7 +992,7 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     
     if !succeeded {
         // If subtitle failed, just copy the original video
-        warn!("字幕处理失败，跳过字幕，保留原始视频");
+        info!("字幕处理失败，跳过字幕，保留原始视频");
         fs::copy(input_path, output_path)
             .map_err(|e| format!("无法复制视频文件: {}", e))?;
     }
