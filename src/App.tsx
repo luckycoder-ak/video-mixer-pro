@@ -62,7 +62,14 @@ function App() {
   const handleSaveConfig = async (config: VideoConfig) => {
     try {
       const savedConfig = await invoke<VideoConfig>('save_config', { config });
-      const newConfigs = [...configs, savedConfig];
+      let newConfigs: VideoConfig[];
+      const existingIndex = configs.findIndex((c) => c.id === savedConfig.id);
+      if (existingIndex >= 0) {
+        newConfigs = [...configs];
+        newConfigs[existingIndex] = savedConfig;
+      } else {
+        newConfigs = [...configs, savedConfig];
+      }
       setConfigs(newConfigs);
       await invoke('save_configs', { configs: newConfigs, tasks });
       const filePath = await getDataFilePath();

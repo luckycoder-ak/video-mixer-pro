@@ -55,6 +55,7 @@ fn main() {
             config::save_config,
             config::delete_config,
             config::get_config,
+            config::get_audio_duration,
             storage::load_data,
             storage::save_data,
             storage::save_configs,

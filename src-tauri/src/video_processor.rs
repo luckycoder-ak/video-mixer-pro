@@ -690,7 +690,15 @@ fn process_single_mode(
 #[tauri::command]
 pub fn create_task(state: tauri::State<AppState>, config_name: String, count: usize) -> Result<Task, String> {
     info!("创建任务: config_name={}, count={}", config_name, count);
-    let task = Task::new(config_name.clone(), count);
+    
+    let configs = state.configs.read().map_err(|e: std::sync::PoisonError<std::sync::RwLockReadGuard<'_, Vec<config::VideoConfig>>>| e.to_string())?;
+    let config = configs.iter().find(|c| c.name == config_name).cloned();
+    drop(configs);
+    
+    let config_id = config.as_ref().map(|c| c.id.clone()).unwrap_or_default();
+    let mut task = Task::new(config_name.clone(), count);
+    task.config_id = config_id;
+    
     let mut tasks = state.tasks.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<Task>>>| e.to_string())?;
     tasks.push(task.clone());
     info!("任务创建成功: id={}", task.id);

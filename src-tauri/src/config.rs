@@ -64,10 +64,6 @@ impl VideoConfig {
             return Err("音频文件必须选择".to_string());
         }
 
-        if self.tutorial_folder.trim().is_empty() {
-            return Err("教程片段文件夹必须选择".to_string());
-        }
-
         let total_segment_duration: u32 = self
             .template_segments
             .iter()
@@ -134,4 +130,25 @@ pub fn delete_config(state: tauri::State<AppState>, id: String) -> Result<(), St
     let mut configs = state.configs.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
     configs.retain(|c| c.id != id);
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_audio_duration(audio_path: String) -> Result<u32, String> {
+    let output = std::process::Command::new("ffprobe")
+        .args([
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            &audio_path,
+        ])
+        .output()
+        .map_err(|e| format!("获取音频时长失败: {}", e))?;
+
+    if !output.status.success() {
+        return Err("ffprobe 执行失败".to_string());
+    }
+
+    let duration_str = String::from_utf8_lossy(&output.stdout);
+    let duration_secs: f64 = duration_str.trim().parse().map_err(|_| "解析时长失败".to_string())?;
+    Ok(duration_secs as u32)
 }

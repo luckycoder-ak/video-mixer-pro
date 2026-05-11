@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { invoke } from '@tauri-apps/api/core';
 import { VideoConfig, TemplateSegment, createDefaultConfig } from '../types';
 
 const isTauriEnv = typeof window !== 'undefined' && (window as any).__TAURI__ !== undefined;
@@ -101,7 +102,12 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       });
       if (selected) {
         handleInputChange('audio_path', selected);
-        handleInputChange('audio_duration', 180);
+        try {
+          const duration = await invoke<number>('get_audio_duration', { audioPath: selected });
+          handleInputChange('audio_duration', duration);
+        } catch {
+          handleInputChange('audio_duration', 180);
+        }
       }
     } catch (error) {
       console.error('选择音频文件失败:', error);

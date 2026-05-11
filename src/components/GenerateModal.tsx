@@ -49,7 +49,7 @@ export const GenerateModal: React.FC<Props> = ({ config, onGenerate, onClose }) 
               <input
                 type="number"
                 value={count}
-                onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={(e) => setCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
                 min="1"
                 max="100"
                 className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-center font-semibold text-lg focus:ring-2 focus:ring-primary focus:border-transparent"
