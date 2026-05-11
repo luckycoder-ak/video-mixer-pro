@@ -340,27 +340,62 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                 <div className="col-span-2">
                   <div className="flex gap-2">
                   {task.status === 'completed' ? (
-                    <button
-                      onClick={() => handleOpenFolder(task)}
-                      className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      打开文件夹
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleOpenFolder(task)}
+                        className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        打开文件夹
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTask(task)}
+                        className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        title="删除任务"
+                      >
+                        🗑️
+                      </button>
+                    </>
                   ) : task.status === 'paused' ? (
-                    <button
-                      onClick={() => handleResumeTask(task)}
-                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-md transition-all"
-                    >
-                      继续
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleResumeTask(task)}
+                        className="px-3 py-1.5 text-sm bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-md transition-all"
+                      >
+                        继续
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTask(task)}
+                        className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        title="删除任务"
+                      >
+                        🗑️
+                      </button>
+                    </>
                   ) : task.status === 'running' ? (
+                    <>
+                      <button
+                        onClick={() => handlePauseTask(task)}
+                        className="px-3 py-1.5 text-sm bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg hover:shadow-md transition-all"
+                      >
+                        暂停
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTask(task)}
+                        className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        title="删除任务"
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={() => handlePauseTask(task)}
-                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg hover:shadow-md transition-all"
+                      onClick={() => handleDeleteTask(task)}
+                      className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                      title="删除任务"
                     >
-                      暂停
+                      🗑️
                     </button>
-                  ) : null}
+                  )}
                   </div>
                 </div>
               </div>
