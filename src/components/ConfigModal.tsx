@@ -538,13 +538,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const renderTutorialTab = () => (
     <div className="space-y-6">
       <div>
-        <h4 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <span>📚</span>
-          <span>教程素材配置</span>
-        </h4>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">教程素材来源文件夹</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">教程素材来源文件夹</label>
           <div className="flex gap-3">
             <button
               onClick={() => handleSelectFolder(true)}
@@ -562,7 +556,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           <p className="text-xs text-gray-400 mt-2">
             说明：教程素材用于在模板片段之间插入过渡内容，相同片段不会重复使用
           </p>
-        </div>
       </div>
     </div>
   );
