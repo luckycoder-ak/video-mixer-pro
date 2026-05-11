@@ -641,12 +641,14 @@ fn process_quadrant_mode_optimized(
 
 #[cfg(target_os = "windows")]
 fn escape_subtitle_path(path: &str) -> String {
-    path.replace('\\', "\\\\").replace(':', "\\\\:")
+    let escaped = path.replace('\\', "\\\\").replace(':', "\\\\:");
+    format!("'{}'", escaped)
 }
 
 #[cfg(not(target_os = "windows"))]
 fn escape_subtitle_path(path: &str) -> String {
-    path.replace('\\', "\\\\").replace(':', "\\:")
+    let escaped = path.replace("'", "'\\''");
+    format!("'{}'", escaped)
 }
 
 #[cfg(target_os = "windows")]
@@ -933,7 +935,7 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     let subtitle_path_escaped = escape_subtitle_path(subtitle_path);
     
     let encoder = detect_best_encoder();
-    let vf = format!("subtitles='{}'", subtitle_path_escaped);
+    let vf = format!("subtitles={}", subtitle_path_escaped);
     
     let mut args = vec![
         "-hide_banner",
