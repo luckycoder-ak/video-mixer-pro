@@ -28,7 +28,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
