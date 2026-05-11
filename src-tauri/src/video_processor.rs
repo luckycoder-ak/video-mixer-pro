@@ -335,7 +335,7 @@ fn process_dual_mode_optimized(
     let start_time_str = start_time.to_string();
 
     let vf_bg = format!(
-        "scale=iw*2:ih*2:gblur=sigma=15,scale={}:{},pad={}:{}:0:0",
+        "scale=iw*2:ih*2,gblur=sigma=15,scale={}:{},pad={}:{}:0:0",
         output_width, output_height, output_width, output_height
     );
 
