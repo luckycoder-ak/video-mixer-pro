@@ -669,29 +669,6 @@ fn get_random_transition_type() -> String {
     transitions[index].clone()
 }
 
-fn trim_video(input: &PathBuf, output: &PathBuf, start: f32, end: f32) -> Result<(), String> {
-    let input_str = input.to_string_lossy().to_string();
-    let output_str = output.to_string_lossy().to_string();
-    
-    let encoder = detect_best_encoder();
-    
-    let args: Vec<&str> = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input_str,
-        "-ss", &start.to_string(),
-        "-to", &end.to_string(),
-        "-c:v", &encoder.video_codec,
-        "-c:a", "copy",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-threads", "4",
-        "-y", &output_str,
-    ];
-    
-    run_ffmpeg_fast(&args)
-}
-
 fn create_transition_effect(
     video1: &PathBuf,
     video2: &PathBuf,
@@ -857,32 +834,13 @@ fn process_single_mode(
     }
 
     // 创建转场效果文件
-    // 正确的xfade转场逻辑：
-    // - 第一个片段：截取到 transition_duration 之前
-    // - 每个转场：片段i的后transition_duration秒 + 片段i+1的前transition_duration秒
-    // - 最后一个片段：从transition_duration开始到结束
-    // 最终拼接: [片段1的前部分] + [转场1] + [转场2] + ... + [最后一个片段]
+    // 简化逻辑：直接拼接原始片段，在每对相邻片段之间插入转场效果
     let mut transition_segment_files: Vec<PathBuf> = Vec::new();
     
     for (i, segment) in segment_files.iter().enumerate() {
-        if i == 0 {
-            // 第一个片段：截取到转场开始之前
-            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
-            trim_video(segment, &trimmed_file, 0.0, segment.duration() - transition_duration)?;
-            transition_segment_files.push(trimmed_file);
-        } else if i == segment_files.len() - 1 {
-            // 最后一个片段：从转场结束后开始
-            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
-            trim_video(segment, &trimmed_file, transition_duration, segment.duration())?;
-            transition_segment_files.push(trimmed_file);
-        } else {
-            // 中间的片段：从转场结束后开始，到转场开始之前结束
-            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
-            trim_video(segment, &trimmed_file, transition_duration, segment.duration() - transition_duration)?;
-            transition_segment_files.push(trimmed_file);
-        }
+        transition_segment_files.push(segment.clone());
         
-        // 添加转场效果（除了最后一个片段）
+        // 在每对相邻片段之间添加转场效果
         if i < segment_files.len() - 1 {
             let transition_type = get_random_transition_type();
             let transition_file = temp_dir.join(format!("transition_{}.mp4", i));
@@ -899,7 +857,8 @@ fn process_single_mode(
         }
     }
     
-    info!("转场处理完成，共 {} 个转场", segment_files.len() - 1);
+    info!("转场处理完成，共 {} 个片段和 {} 个转场", 
+          segment_files.len(), segment_files.len() - 1);
 
     let concat_file = temp_dir.join("concat.txt");
     let mut concat_content = String::new();
@@ -992,59 +951,58 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     // Now try with the (possibly simplified) path
     let mut succeeded = false;
     
-    // Try different subtitle filter approaches
-    let methods = vec![
-        // Method 1: Use ass filter (works better than subtitles)
-        {
-            let mut args = vec![
-                "-hide_banner",
-                "-loglevel", "error",
-                "-i", &input_str,
-            ];
-            args.extend(&["-vf", &format!("ass='{}'", &subtitle_to_use)]);
-            args.extend(&[
-                "-c:v", &encoder.video_codec,
-                "-c:a", "copy",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                "-threads", "4",
-                "-y", &output_str,
-            ]);
-            args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
-            args.iter().map(|s| s.as_ref()).collect::<Vec<&str>>()
-        },
-        // Method 2: Use subtitles filter with filename= parameter
-        {
-            let mut args = vec![
-                "-hide_banner",
-                "-loglevel", "error",
-                "-i", &input_str,
-            ];
-            args.extend(&["-vf", &format!("subtitles=filename='{}'", &subtitle_to_use)]);
-            args.extend(&[
-                "-c:v", &encoder.video_codec,
-                "-c:a", "copy",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                "-threads", "4",
-                "-y", &output_str,
-            ]);
-            args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
-            args.iter().map(|s| s.as_ref()).collect::<Vec<&str>>()
-        },
-    ];
-    
-    for (i, args) in methods.iter().enumerate() {
-        info!("尝试字幕方法 {}: {:?}", i + 1, args);
+    // Try method 1: Use ass filter
+    {
+        let filter_str = format!("ass='{}'", subtitle_to_use);
+        let mut args: Vec<&str> = vec![
+            "-hide_banner",
+            "-loglevel", "error",
+            "-i", &input_str,
+            "-vf", &filter_str,
+            "-c:v", &encoder.video_codec,
+            "-c:a", "copy",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "4",
+            "-y", &output_str,
+        ];
+        args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
         
-        match run_ffmpeg_fast(args) {
+        match run_ffmpeg_fast(&args) {
             Ok(_) => {
-                info!("字幕方法 {} 成功", i + 1);
+                info!("字幕方法1 (ass) 成功");
                 succeeded = true;
-                break;
             }
             Err(e) => {
-                info!("字幕方法 {} 失败: {}", i + 1, e);
+                info!("字幕方法1 (ass) 失败: {}", e);
+            }
+        }
+    }
+    
+    // Try method 2: Use subtitles filter with filename= parameter
+    if !succeeded {
+        let filter_str = format!("subtitles=filename='{}'", subtitle_to_use);
+        let mut args: Vec<&str> = vec![
+            "-hide_banner",
+            "-loglevel", "error",
+            "-i", &input_str,
+            "-vf", &filter_str,
+            "-c:v", &encoder.video_codec,
+            "-c:a", "copy",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "4",
+            "-y", &output_str,
+        ];
+        args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
+        
+        match run_ffmpeg_fast(&args) {
+            Ok(_) => {
+                info!("字幕方法2 (subtitles) 成功");
+                succeeded = true;
+            }
+            Err(e) => {
+                info!("字幕方法2 (subtitles) 失败: {}", e);
             }
         }
     }
