@@ -371,7 +371,7 @@ fn process_dual_mode_optimized(
         let vf_left = vf_left.clone();
         let video_codec = encoder_video_codec.clone();
         thread::spawn(move || {
-            let mut args: Vec<String> = vec![
+            let args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
                 "-ss".to_string(), start_time_str,
                 "-i".to_string(), left_str,
@@ -395,7 +395,7 @@ fn process_dual_mode_optimized(
         let vf_right = vf_right.clone();
         let video_codec = encoder_video_codec.clone();
         thread::spawn(move || {
-            let mut args: Vec<String> = vec![
+            let args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
                 "-ss".to_string(), start_time_str,
                 "-i".to_string(), right_str,
@@ -863,7 +863,7 @@ fn process_single_mode(
     }
     fs::write(&concat_file, concat_content).map_err(|e| e.to_string())?;
 
-    let mut output_path = output_dir.join(output_filename);
+    let output_path = output_dir.join(output_filename);
     let temp_output_path = if !subtitle_path.is_empty() {
         temp_dir.join(format!("temp_{}", output_filename))
     } else {
@@ -1225,10 +1225,11 @@ pub fn refresh_tasks_from_disk(app: tauri::AppHandle, state: tauri::State<AppSta
     if data_file.exists() {
         if let Ok(content) = std::fs::read_to_string(&data_file) {
             if let Ok(data) = serde_json::from_str::<super::storage::AppData>(&content) {
+                let tasks_count = data.tasks.len();
                 if let Ok(mut tasks) = state.tasks.write() {
                     *tasks = data.tasks;
                 }
-                info!("Refreshed {} tasks from disk", data.tasks.len());
+                info!("Refreshed {} tasks from disk", tasks_count);
             }
         }
     }
