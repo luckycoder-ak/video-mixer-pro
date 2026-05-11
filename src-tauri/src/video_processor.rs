@@ -668,6 +668,29 @@ fn get_random_transition_type() -> String {
     transitions[index].clone()
 }
 
+fn trim_video(input: &PathBuf, output: &PathBuf, start: f32, end: f32) -> Result<(), String> {
+    let input_str = input.to_string_lossy().to_string();
+    let output_str = output.to_string_lossy().to_string();
+    
+    let encoder = detect_best_encoder();
+    
+    let args: Vec<&str> = vec![
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", &input_str,
+        "-ss", &start.to_string(),
+        "-to", &end.to_string(),
+        "-c:v", &encoder.video_codec,
+        "-c:a", "copy",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-threads", "4",
+        "-y", &output_str,
+    ];
+    
+    run_ffmpeg_fast(&args)
+}
+
 fn create_transition_effect(
     video1: &PathBuf,
     video2: &PathBuf,
@@ -825,14 +848,36 @@ fn process_single_mode(
         }
     }
 
+    // 创建转场效果文件
+    // 正确的xfade转场逻辑：
+    // - 第一个片段：截取到 transition_duration 之前
+    // - 每个转场：片段i的后transition_duration秒 + 片段i+1的前transition_duration秒
+    // - 最后一个片段：从transition_duration开始到结束
+    // 最终拼接: [片段1的前部分] + [转场1] + [转场2] + ... + [最后一个片段]
     let mut transition_segment_files: Vec<PathBuf> = Vec::new();
     
-    for i in 0..segment_files.len() {
-        transition_segment_files.push(segment_files[i].clone());
+    for (i, segment) in segment_files.iter().enumerate() {
+        if i == 0 {
+            // 第一个片段：截取到转场开始之前
+            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
+            trim_video(segment, &trimmed_file, 0.0, segment.duration() - transition_duration)?;
+            transition_segment_files.push(trimmed_file);
+        } else if i == segment_files.len() - 1 {
+            // 最后一个片段：从转场结束后开始
+            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
+            trim_video(segment, &trimmed_file, transition_duration, segment.duration())?;
+            transition_segment_files.push(trimmed_file);
+        } else {
+            // 中间的片段：从转场结束后开始，到转场开始之前结束
+            let trimmed_file = temp_dir.join(format!("segment_trimmed_{}.mp4", i));
+            trim_video(segment, &trimmed_file, transition_duration, segment.duration() - transition_duration)?;
+            transition_segment_files.push(trimmed_file);
+        }
         
+        // 添加转场效果（除了最后一个片段）
         if i < segment_files.len() - 1 {
             let transition_type = get_random_transition_type();
-            let transition_file = temp_dir.join(format!("transition_{}_{}.mp4", i, Uuid::new_v4()));
+            let transition_file = temp_dir.join(format!("transition_{}.mp4", i));
             
             create_transition_effect(
                 &segment_files[i],
@@ -845,6 +890,8 @@ fn process_single_mode(
             transition_segment_files.push(transition_file);
         }
     }
+    
+    info!("转场处理完成，共 {} 个转场", segment_files.len() - 1);
 
     let concat_file = temp_dir.join("concat.txt");
     let mut concat_content = String::new();
