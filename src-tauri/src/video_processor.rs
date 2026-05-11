@@ -624,7 +624,17 @@ fn process_single_mode(
             return Err(format!("片段 {} 的源文件夹中没有视频文件", i + 1));
         }
 
-        let selected = select_random_videos(&videos, 1, &HashSet::new())?;
+        let video_count = match segment.crop_mode {
+            super::config::CropMode::Single => 1,
+            super::config::CropMode::Dual => 2,
+            super::config::CropMode::Quadrant => 4,
+        };
+
+        if videos.len() < video_count {
+            return Err(format!("片段 {} 需要 {} 个视频文件，但源文件夹中只有 {} 个", i + 1, video_count, videos.len()));
+        }
+
+        let selected = select_random_videos(&videos, video_count, &HashSet::new())?;
         let processed = process_segment(
             &selected,
             &segment.crop_mode,
