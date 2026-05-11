@@ -883,11 +883,9 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             info!("开始处理第 {}/{} 个视频", i + 1, count);
             info!("============================================");
             
-            let steps = vec![
-                (format!("segment_{}_scan", i + 1), "步骤 1/3: 扫描视频文件"),
-                (format!("segment_{}_process", i + 1), "步骤 2/3: 处理片段"),
-                (format!("segment_{}_merge", i + 1), "步骤 3/3: 合成视频"),
-            ];
+            let step_scan_id = format!("segment_{}_scan", i + 1);
+            let step_process_id = format!("segment_{}_process", i + 1);
+            let step_merge_id = format!("segment_{}_merge", i + 1);
             
             if let Ok(mut tasks) = tasks_clone.write() {
                 if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
@@ -898,27 +896,68 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 }
             }
             
-            for (step_id, step_name) in &steps {
-                info!("  - {}", step_name);
-                if let Ok(mut tasks) = tasks_clone.write() {
-                    if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        task.progress_steps.push(TaskStep {
-                            id: step_id.clone(),
-                            name: step_name.to_string(),
-                            status: StepStatus::Running,
-                            error: None,
-                        });
+            // 步骤 1: 扫描视频文件
+            info!("  - 步骤 1/3: 扫描视频文件");
+            if let Ok(mut tasks) = tasks_clone.write() {
+                if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                    task.progress_steps.push(TaskStep {
+                        id: step_scan_id.clone(),
+                        name: "步骤 1/3: 扫描视频文件".to_string(),
+                        status: StepStatus::Running,
+                        error: None,
+                    });
+                }
+            }
+            
+            // 实际扫描视频
+            let scan_result: Result<(), String> = (|| {
+                for segment in &config.template_segments {
+                    let videos = get_video_files(&segment.source_folder)?;
+                    if videos.is_empty() {
+                        return Err(format!("片段源文件夹中没有视频文件: {}", segment.source_folder));
                     }
                 }
-                
-                std::thread::sleep(Duration::from_millis(100));
-                
-                if let Ok(mut tasks) = tasks_clone.write() {
-                    if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == *step_id) {
-                            step.status = StepStatus::Completed;
+                if !config.tutorial_folder.is_empty() {
+                    let _ = get_video_files(&config.tutorial_folder);
+                }
+                Ok(())
+            })();
+            
+            match scan_result {
+                Ok(_) => {
+                    if let Ok(mut tasks) = tasks_clone.write() {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                            if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == step_scan_id) {
+                                step.status = StepStatus::Completed;
+                            }
                         }
                     }
+                }
+                Err(e) => {
+                    if let Ok(mut tasks) = tasks_clone.write() {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                            task.status = TaskStatus::Error;
+                            task.error_message = Some(e.clone());
+                            if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == step_scan_id) {
+                                step.status = StepStatus::Error;
+                                step.error = Some(e.clone());
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+            
+            // 步骤 2: 处理片段
+            info!("  - 步骤 2/3: 处理片段");
+            if let Ok(mut tasks) = tasks_clone.write() {
+                if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                    task.progress_steps.push(TaskStep {
+                        id: step_process_id.clone(),
+                        name: "步骤 2/3: 处理片段".to_string(),
+                        status: StepStatus::Running,
+                        error: None,
+                    });
                 }
             }
             
@@ -934,6 +973,21 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             
             match result {
                 Ok(_) => {
+                    // 步骤 3: 合成视频 (process_single_mode 已完成所有工作)
+                    if let Ok(mut tasks) = tasks_clone.write() {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                            if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == step_process_id) {
+                                step.status = StepStatus::Completed;
+                            }
+                            task.progress_steps.push(TaskStep {
+                                id: step_merge_id.clone(),
+                                name: "步骤 3/3: 合成视频".to_string(),
+                                status: StepStatus::Completed,
+                                error: None,
+                            });
+                        }
+                    }
+                    
                     info!("✅ 第 {} 个视频处理成功！", i + 1);
                     info!("   已保存到: {}", output_dir.display());
                     if let Ok(mut tasks) = tasks_clone.write() {
