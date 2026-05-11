@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { VideoConfig, TemplateSegment, createDefaultConfig } from '../types';
 
-const isTauriEnv = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
+const isTauriEnv = typeof window !== 'undefined' && (window as any).__TAURI__ !== undefined;
 
 interface Props {
   config: VideoConfig | null;
