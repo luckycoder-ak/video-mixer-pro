@@ -164,7 +164,16 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const handleMouseEnter = (e: React.MouseEvent, task: Task) => {
     if (task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error') {
       const rect = e.currentTarget.getBoundingClientRect();
-      const newPosition = { x: rect.left + 10, y: rect.top };
+      const popupHeight = 400;
+      const windowHeight = window.innerHeight;
+      const bottomSpace = windowHeight - rect.bottom;
+      
+      let popupY = rect.top;
+      if (bottomSpace < popupHeight && rect.top > popupHeight) {
+        popupY = rect.top - popupHeight;
+      }
+      
+      const newPosition = { x: rect.left + 10, y: popupY };
       
       const timeout = window.setTimeout(() => {
         setHoverPosition(newPosition);
@@ -377,7 +386,20 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             
             {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
               <div className="space-y-2">
-                {hoveredTask.progress_steps.map((step) => (
+                {[...hoveredTask.progress_steps].sort((a, b) => {
+                  const order: Record<string, number> = {
+                    'init': 0,
+                    'video_1': 1,
+                    'video_2': 2,
+                    'video_3': 3,
+                    'video_4': 4,
+                    'video_5': 5,
+                    'finish': 99,
+                  };
+                  const orderA = order[a.id] ?? parseInt(a.id.replace(/\D/g, '')) || 50;
+                  const orderB = order[b.id] ?? parseInt(b.id.replace(/\D/g, '')) || 50;
+                  return orderA - orderB;
+                }).map((step) => (
                   <div
                     key={step.id}
                     className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${getStepStatusColor(step.status)}`}
