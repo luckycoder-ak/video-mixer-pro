@@ -184,7 +184,7 @@ pub fn process_segment(
         }
         super::config::CropMode::Dual => {
             let output = temp_dir.join(format!("segment_{}.mp4", Uuid::new_v4()));
-            process_dual_mode_optimized(&videos[0], &videos[1], &output, output_width, output_height, duration, start_time, temp_dir)?;
+            process_dual_mode_optimized(&videos[0], &videos[1], &videos[2], &output, output_width, output_height, duration, start_time, temp_dir)?;
             Ok(ProcessedSegment { output_path: output, duration: duration as f64 })
         }
         super::config::CropMode::Quadrant => {
@@ -308,6 +308,7 @@ fn process_single_mode_optimized(
 }
 
 fn process_dual_mode_optimized(
+    bg: &PathBuf,
     left: &PathBuf,
     right: &PathBuf,
     output: &PathBuf,
@@ -317,26 +318,64 @@ fn process_dual_mode_optimized(
     start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
-    let half_width = output_width / 2;
-    let half_height = output_height;
     let encoder = detect_best_encoder();
-
     let encoder_video_codec = encoder.video_codec.clone();
 
+    let bg_scaled = temp_dir.join(format!("bg_{}.mp4", Uuid::new_v4()));
     let left_scaled = temp_dir.join(format!("left_{}.mp4", Uuid::new_v4()));
     let right_scaled = temp_dir.join(format!("right_{}.mp4", Uuid::new_v4()));
 
+    let bg_str = bg.to_string_lossy().to_string();
     let left_str = left.to_string_lossy().to_string();
     let right_str = right.to_string_lossy().to_string();
+    let bg_scaled_str = bg_scaled.to_string_lossy().to_string();
     let left_scaled_str = left_scaled.to_string_lossy().to_string();
     let right_scaled_str = right_scaled.to_string_lossy().to_string();
     let duration_str = duration.to_string();
     let start_time_str = start_time.to_string();
 
-    let vf_left = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
-        half_width, half_height, half_width, half_height
+    let vf_bg = format!(
+        "scale={}:{}:force_original_aspect_ratio=zoom,blur=15,crop={}:{}",
+        output_width * 2, output_height * 2, output_width, output_height
     );
+
+    let half_height = output_height * 3 / 4;
+    let left_width = output_width / 2;
+    let vf_left = format!(
+        "scale={}:{}:force_original_aspect_ratio=decrease,crop={}:{}",
+        left_width, half_height, left_width, half_height
+    );
+    let vf_right = format!(
+        "scale={}:{}:force_original_aspect_ratio=decrease,crop={}:{}",
+        left_width, half_height, left_width, half_height
+    );
+
+    let left_y = (output_height - half_height) / 2;
+    let right_y = left_y;
+
+    let bg_handle = {
+        let bg_str = bg_str.clone();
+        let bg_scaled_str = bg_scaled_str.clone();
+        let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
+        let vf_bg = vf_bg.clone();
+        let video_codec = encoder_video_codec.clone();
+        thread::spawn(move || {
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
+                "-i".to_string(), bg_str,
+                "-vf".to_string(), vf_bg,
+                "-c:v".to_string(), video_codec,
+                "-an".to_string(),
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                bg_scaled_str,
+            ];
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
+        })
+    };
 
     let left_handle = {
         let left_str = left_str.clone();
@@ -345,7 +384,6 @@ fn process_dual_mode_optimized(
         let start_time_str = start_time_str.clone();
         let vf_left = vf_left.clone();
         let video_codec = encoder_video_codec.clone();
-        let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
@@ -358,16 +396,10 @@ fn process_dual_mode_optimized(
                 "-y".to_string(),
                 left_scaled_str,
             ];
-            args.extend(extra_args);
             let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             run_ffmpeg_fast(&args_ref)
         })
     };
-
-    let vf_right = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
-        half_width, half_height, half_width, half_height
-    );
 
     let right_handle = {
         let right_str = right_str.clone();
@@ -376,7 +408,6 @@ fn process_dual_mode_optimized(
         let start_time_str = start_time_str.clone();
         let vf_right = vf_right.clone();
         let video_codec = encoder_video_codec.clone();
-        let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
@@ -389,32 +420,33 @@ fn process_dual_mode_optimized(
                 "-y".to_string(),
                 right_scaled_str,
             ];
-            args.extend(extra_args);
             let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             run_ffmpeg_fast(&args_ref)
         })
     };
 
+    let _ = bg_handle.join().map_err(|e| format!("线程错误: {:?}", e))??;
     let _ = left_handle.join().map_err(|e| format!("线程错误: {:?}", e))??;
     let _ = right_handle.join().map_err(|e| format!("线程错误: {:?}", e))??;
 
     let output_str = output.to_string_lossy().to_string();
     let filter_complex_str = format!(
-        "[0:v][1:v]hstack=inputs=2[stacked]"
+        "[0:v][1:v]overlay=0:{}:shortest=1[bg_left];[bg_left][2:v]overlay={}:{}:shortest=1[final]",
+        left_y, left_width, right_y
     );
 
     let mut args: Vec<String> = vec![
         "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), bg_scaled_str,
         "-i".to_string(), left_scaled_str,
         "-i".to_string(), right_scaled_str,
         "-filter_complex".to_string(), filter_complex_str,
-        "-map".to_string(), "[stacked]".to_string(),
+        "-map".to_string(), "[final]".to_string(),
         "-c:v".to_string(), encoder.video_codec.clone(),
         "-an".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-movflags".to_string(), "+faststart".to_string(),
         "-threads".to_string(), "4".to_string(),
-        "-t".to_string(), duration_str,
         "-y".to_string(),
         output_str,
     ];
@@ -422,6 +454,7 @@ fn process_dual_mode_optimized(
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_ffmpeg_fast(&args_ref)?;
 
+    let _ = std::fs::remove_file(&bg_scaled);
     let _ = std::fs::remove_file(&left_scaled);
     let _ = std::fs::remove_file(&right_scaled);
 
@@ -633,7 +666,7 @@ fn process_single_mode(
 
         let video_count = match segment.crop_mode {
             super::config::CropMode::Single => 1,
-            super::config::CropMode::Dual => 2,
+            super::config::CropMode::Dual => 3,
             super::config::CropMode::Quadrant => 4,
         };
 
