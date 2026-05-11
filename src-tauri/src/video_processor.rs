@@ -937,51 +937,60 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     // Now try with the (possibly simplified) path
     let mut succeeded = false;
     
-    // Build the argument vector properly without string splitting
-    let mut args = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input_str,
+    // Try different subtitle filter approaches
+    let methods = vec![
+        // Method 1: Use ass filter (works better than subtitles)
+        {
+            let mut args = vec![
+                "-hide_banner",
+                "-loglevel", "error",
+                "-i", &input_str,
+            ];
+            args.extend(&["-vf", &format!("ass='{}'", &subtitle_to_use)]);
+            args.extend(&[
+                "-c:v", &encoder.video_codec,
+                "-c:a", "copy",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-threads", "4",
+                "-y", &output_str,
+            ]);
+            args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
+            args.iter().map(|s| s.as_ref()).collect::<Vec<&str>>()
+        },
+        // Method 2: Use subtitles filter with filename= parameter
+        {
+            let mut args = vec![
+                "-hide_banner",
+                "-loglevel", "error",
+                "-i", &input_str,
+            ];
+            args.extend(&["-vf", &format!("subtitles=filename='{}'", &subtitle_to_use)]);
+            args.extend(&[
+                "-c:v", &encoder.video_codec,
+                "-c:a", "copy",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-threads", "4",
+                "-y", &output_str,
+            ]);
+            args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
+            args.iter().map(|s| s.as_ref()).collect::<Vec<&str>>()
+        },
     ];
     
-    // Add subtitles filter using the correct escaping
-    #[cfg(target_os = "windows")]
-    let escaped_path = {
-        // Windows escaping
-        let path_str = &subtitle_to_use;
-        let escaped = path_str.replace('\\', "\\\\").replace(':', "\\\\:");
-        format!("subtitles='{}'", escaped)
-    };
-    
-    #[cfg(not(target_os = "windows"))]
-    let escaped_path = {
-        // macOS/Linux escaping
-        let path_str = &subtitle_to_use;
-        let escaped = path_str.replace('\'', "'\\\\''");
-        format!("subtitles='{}'", escaped)
-    };
-    
-    args.extend(&["-vf", &escaped_path]);
-    
-    args.extend(&[
-        "-c:v", &encoder.video_codec,
-        "-c:a", "copy",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-threads", "4",
-        "-y", &output_str,
-    ]);
-    args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
-    
-    let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
-    
-    match run_ffmpeg_fast(&args_ref) {
-        Ok(_) => {
-            info!("字幕添加成功");
-            succeeded = true;
-        }
-        Err(e) => {
-            info!("字幕添加失败: {}", e);
+    for (i, args) in methods.iter().enumerate() {
+        info!("尝试字幕方法 {}: {:?}", i + 1, args);
+        
+        match run_ffmpeg_fast(args) {
+            Ok(_) => {
+                info!("字幕方法 {} 成功", i + 1);
+                succeeded = true;
+                break;
+            }
+            Err(e) => {
+                info!("字幕方法 {} 失败: {}", i + 1, e);
+            }
         }
     }
     
