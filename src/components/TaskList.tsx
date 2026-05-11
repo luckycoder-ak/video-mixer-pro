@@ -158,12 +158,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const getStepOrder = (id: string): number => {
     const orderMap: Record<string, number> = {
       'init': 0,
-      'video_1': 10,
-      'video_2': 20,
-      'video_3': 30,
-      'video_4': 40,
-      'video_5': 50,
-      'finish': 999,
+      'finish': 9999,
     };
     if (orderMap[id] !== undefined) return orderMap[id];
     
@@ -177,11 +172,17 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
         'process': 1,
         'merge': 2
       };
-      // 子步骤在对应的 video 步骤之后
-      return videoIndex * 10 + 1 + (subOrderMap[subStep] || 0);
+      return videoIndex * 100 + (subOrderMap[subStep] || 0);
     }
     
-    return 100;
+    // 处理 video_* 步骤，放在对应的 segment 之前
+    if (id.startsWith('video_')) {
+      const parts = id.split('_');
+      const videoIndex = parseInt(parts[1], 10);
+      return videoIndex * 100 - 1;
+    }
+    
+    return 999;
   };
 
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
@@ -408,31 +409,34 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             
             {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
               <div className="space-y-2">
-                {[...hoveredTask.progress_steps].sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id)).map((step) => {
-                  const isSubStep = step.id.startsWith('segment_');
-                  return (
-                    <div
-                      key={step.id}
-                      className={`flex items-start gap-2 rounded-lg border text-xs ${getStepStatusColor(step.status)} ${isSubStep ? 'ml-4' : ''} ${isSubStep ? 'py-1.5 px-2' : 'p-2'}`}
-                    >
-                      <div className="mt-0.5">{getStepIcon(step.status)}</div>
-                      <div className="flex-1">
-                        <p className={`font-medium ${
-                          step.status === 'completed' ? 'text-green-700' :
-                          step.status === 'running' ? 'text-blue-700' :
-                          step.status === 'error' ? 'text-red-700' : 'text-gray-600'
-                        } ${isSubStep ? 'text-xs' : ''}`}>
-                          {step.name}
-                        </p>
-                        {step.error && (
-                          <p className="text-red-500 text-xs mt-1 truncate">
-                            {step.error}
+                {[...hoveredTask.progress_steps]
+                  .filter(step => !step.id.startsWith('video_')) // 不显示冗余的 video_* 步骤
+                  .sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id))
+                  .map((step) => {
+                    const isSubStep = step.id.startsWith('segment_');
+                    return (
+                      <div
+                        key={step.id}
+                        className={`flex items-start gap-2 rounded-lg border text-xs ${getStepStatusColor(step.status)} ${isSubStep ? 'py-2 px-3' : 'p-2'}`}
+                      >
+                        <div className="mt-0.5">{getStepIcon(step.status)}</div>
+                        <div className="flex-1">
+                          <p className={`font-medium ${
+                            step.status === 'completed' ? 'text-green-700' :
+                            step.status === 'running' ? 'text-blue-700' :
+                            step.status === 'error' ? 'text-red-700' : 'text-gray-600'
+                          }`}>
+                            {step.name}
                           </p>
-                        )}
+                          {step.error && (
+                            <p className="text-red-500 text-xs mt-1 truncate">
+                              {step.error}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             ) : (
               <div className="text-center text-gray-500 py-4">
