@@ -690,38 +690,38 @@ fn create_transition_effect(
     
     let filter_complex = match transition_type {
         "fade" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "dissolve" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=dissolve:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=dissolve:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "wipeleft" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipeleft:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=wipeleft:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "wiperight" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wiperight:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=wiperight:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "wipeup" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipeup:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=wipeup:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "wipedown" => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipedown:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=wipedown:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
         "hblur" => {
             let blur_val = "10:0".to_string();
             format!(
-                "[0:v]trim=0:{},setpts=PTS-STARTPTS,boxblur={}[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS,boxblur={}[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+                "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB,boxblur={}[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB,boxblur={}[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
                 half_duration_str, blur_val, half_duration_str, half_duration_str, blur_val, duration_str, half_duration_str
             )
         },
         _ => format!(
-            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS,settb=AVTB[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,settb=AVTB[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
     };
