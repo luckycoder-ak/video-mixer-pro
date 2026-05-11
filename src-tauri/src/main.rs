@@ -9,8 +9,8 @@ use std::sync::RwLock;
 use tauri::Manager;
 
 pub struct AppState {
-    pub configs: std::sync::RwLock<Vec<config::VideoConfig>>,
-    pub tasks: std::sync::RwLock<Vec<video_processor::Task>>,
+    pub configs: std::sync::Arc<std::sync::RwLock<Vec<config::VideoConfig>>>,
+    pub tasks: std::sync::Arc<std::sync::RwLock<Vec<video_processor::Task>>>,
 }
 
 fn main() {
@@ -23,8 +23,8 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            configs: RwLock::new(Vec::new()),
-            tasks: RwLock::new(Vec::new()),
+            configs: std::sync::Arc::new(RwLock::new(Vec::new())),
+            tasks: std::sync::Arc::new(RwLock::new(Vec::new())),
         })
         .setup(|app| {
             info!("Application setup complete");

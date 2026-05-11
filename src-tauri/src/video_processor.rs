@@ -22,15 +22,6 @@ pub enum TaskStatus {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskStep {
-    pub id: String,
-    pub name: String,
-    #[serde(rename_all = "lowercase")]
-    pub status: StepStatus,
-    pub error: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StepStatus {
@@ -38,6 +29,14 @@ pub enum StepStatus {
     Running,
     Completed,
     Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStep {
+    pub id: String,
+    pub name: String,
+    pub status: StepStatus,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -278,30 +277,34 @@ fn process_single_mode_optimized(
     let input_str = input.to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
     let encoder = detect_best_encoder();
+    let vf_str = format!(
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
+        output_width, output_height, output_width, output_height
+    );
+    let duration_str = duration.to_string();
+    let video_codec = encoder.video_codec.clone();
+    let audio_codec = encoder.audio_codec.clone();
 
-    let mut args = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input_str,
-        "-vf", &format!(
-            "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
-            output_width, output_height, output_width, output_height
-        ),
-        "-c:v", &encoder.video_codec,
-        "-c:a", &encoder.audio_codec,
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-threads", "4",
-        "-t", &duration.to_string(),
-        "-y",
-        &output_str,
+    let mut args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input_str,
+        "-vf".to_string(), vf_str,
+        "-c:v".to_string(), video_codec,
+        "-c:a".to_string(), audio_codec,
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-threads".to_string(), "4".to_string(),
+        "-t".to_string(), duration_str,
+        "-y".to_string(),
+        output_str,
     ];
 
     if encoder.video_codec == "libx264" {
-        args.extend(&["-preset", "ultrafast", "-crf", "28"]);
+        args.extend(vec!["-preset".to_string(), "ultrafast".to_string(), "-crf".to_string(), "28".to_string()]);
     }
 
-    let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_ffmpeg_fast(&args_ref)
 }
 
@@ -345,18 +348,19 @@ fn process_dual_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &left_str,
-                "-vf", &vf_left,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &left_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), left_str,
+                "-vf".to_string(), vf_left,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                left_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -374,18 +378,19 @@ fn process_dual_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &right_str,
-                "-vf", &vf_right,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &right_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), right_str,
+                "-vf".to_string(), vf_right,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                right_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -393,26 +398,28 @@ fn process_dual_mode_optimized(
     let _ = right_handle.join().map_err(|e| format!("线程错误: {:?}", e))??;
 
     let output_str = output.to_string_lossy().to_string();
-    let mut args = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &left_scaled_str,
-        "-i", &right_scaled_str,
-        "-filter_complex", &format!(
-            "[0:v]scale={}:{}[left];[1:v]scale={}:{}[right];[left][right]hstack=inputs=2[stacked]",
-            half_width, half_height, half_width, half_height
-        ),
-        "-map", "[stacked]",
-        "-c:v", &encoder.video_codec,
-        "-c:a", &encoder.audio_codec,
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-threads", "4",
-        "-t", &duration_str,
-        "-y",
-        &output_str,
+    let filter_complex_str = format!(
+        "[0:v]scale={}:{}[left];[1:v]scale={}:{}[right];[left][right]hstack=inputs=2[stacked]",
+        half_width, half_height, half_width, half_height
+    );
+
+    let mut args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), left_scaled_str,
+        "-i".to_string(), right_scaled_str,
+        "-filter_complex".to_string(), filter_complex_str,
+        "-map".to_string(), "[stacked]".to_string(),
+        "-c:v".to_string(), encoder.video_codec.clone(),
+        "-c:a".to_string(), encoder.audio_codec.clone(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-threads".to_string(), "4".to_string(),
+        "-t".to_string(), duration_str,
+        "-y".to_string(),
+        output_str,
     ];
-    args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
-    let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    args.extend(encoder.extra_args.clone());
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_ffmpeg_fast(&args_ref)?;
 
     let _ = std::fs::remove_file(&left_scaled);
@@ -469,18 +476,19 @@ fn process_quadrant_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &tl_str,
-                "-vf", &vf_base,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &tl_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), tl_str,
+                "-vf".to_string(), vf_base,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                tl_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -493,18 +501,19 @@ fn process_quadrant_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &tr_str,
-                "-vf", &vf_base,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &tr_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), tr_str,
+                "-vf".to_string(), vf_base,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                tr_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -517,18 +526,19 @@ fn process_quadrant_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &bl_str,
-                "-vf", &vf_base,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &bl_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), bl_str,
+                "-vf".to_string(), vf_base,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                bl_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -541,18 +551,19 @@ fn process_quadrant_mode_optimized(
         let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
-            let mut args = vec![
-                "-hide_banner", "-loglevel", "error",
-                "-i", &br_str,
-                "-vf", &vf_base,
-                "-c:v", &video_codec,
-                "-c:a", &audio_codec,
-                "-t", &duration_str,
-                "-y",
-                &br_scaled_str,
+            let mut args: Vec<String> = vec![
+                "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), br_str,
+                "-vf".to_string(), vf_base,
+                "-c:v".to_string(), video_codec,
+                "-c:a".to_string(), audio_codec,
+                "-t".to_string(), duration_str,
+                "-y".to_string(),
+                br_scaled_str,
             ];
-            args.extend(extra_args.iter().map(|s| s.as_str()));
-            run_ffmpeg_fast(&args.iter().map(|s| *s).collect::<Vec<_>>())
+            args.extend(extra_args);
+            let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            run_ffmpeg_fast(&args_ref)
         })
     };
 
@@ -562,27 +573,29 @@ fn process_quadrant_mode_optimized(
     let _ = handle4.join().map_err(|e| format!("线程错误: {:?}", e))??;
 
     let output_str = output.to_string_lossy().to_string();
-    let mut args = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &tl_scaled_str,
-        "-i", &tr_scaled_str,
-        "-i", &bl_scaled_str,
-        "-i", &br_scaled_str,
-        "-filter_complex", &format!(
-            "[0:v][1:v]hstack[top];[2:v][3:v]hstack[bottom];[top][bottom]vstack[grid]",
-        ),
-        "-map", "[grid]",
-        "-c:v", &encoder.video_codec,
-        "-c:a", &encoder.audio_codec,
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-threads", "4",
-        "-t", &duration_str,
-        "-y",
-        &output_str,
+    let filter_complex_str = format!(
+        "[0:v][1:v]hstack[top];[2:v][3:v]hstack[bottom];[top][bottom]vstack[grid]",
+    );
+
+    let mut args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), tl_scaled_str,
+        "-i".to_string(), tr_scaled_str,
+        "-i".to_string(), bl_scaled_str,
+        "-i".to_string(), br_scaled_str,
+        "-filter_complex".to_string(), filter_complex_str,
+        "-map".to_string(), "[grid]".to_string(),
+        "-c:v".to_string(), encoder.video_codec.clone(),
+        "-c:a".to_string(), encoder.audio_codec.clone(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-threads".to_string(), "4".to_string(),
+        "-t".to_string(), duration_str,
+        "-y".to_string(),
+        output_str,
     ];
-    args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
-    let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    args.extend(encoder.extra_args.clone());
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_ffmpeg_fast(&args_ref)?;
 
     for scaled in [&tl_scaled, &tr_scaled, &bl_scaled, &br_scaled] {
@@ -596,7 +609,7 @@ fn process_single_mode(
     template_segments: &[super::config::TemplateSegment],
     video_ratio: &str,
     audio_path: &str,
-    audio_duration: u32,
+    _audio_duration: u32,
     output_filename: &str,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
@@ -604,7 +617,6 @@ fn process_single_mode(
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let mut total_duration: f64 = 0.0;
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;
@@ -623,7 +635,6 @@ fn process_single_mode(
         )?;
 
         segment_files.push(processed.output_path);
-        total_duration += processed.duration;
     }
 
     let concat_file = temp_dir.join("concat.txt");
@@ -686,13 +697,14 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     tasks.push(task.clone());
     info!("任务创建成功: id={}", task.id);
     
-    let state_clone = state.inner().clone();
+    let configs_clone = state.configs.clone();
+    let tasks_clone = state.tasks.clone();
     let task_id = task.id.clone();
     
     thread::spawn(move || {
         info!("开始处理任务: id={}", task_id);
         
-        let configs = match state_clone.configs.read() {
+        let configs = match configs_clone.read() {
             Ok(c) => c.clone(),
             Err(e) => {
                 error!("获取配置失败: {}", e);
@@ -708,7 +720,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         };
         
-        if let Ok(mut tasks) = state_clone.tasks.write() {
+        if let Ok(mut tasks) = tasks_clone.write() {
             if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = TaskStatus::Running;
                 task.started_at = Some(Utc::now());
@@ -739,7 +751,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 (format!("segment_{}_merge", i + 1), "合成视频"),
             ];
             
-            if let Ok(mut tasks) = state_clone.tasks.write() {
+            if let Ok(mut tasks) = tasks_clone.write() {
                 if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                     task.current_video = i + 1;
                     if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 1)) {
@@ -750,7 +762,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             
             for (step_id, step_name) in &steps {
                 info!("  - {}", step_name);
-                if let Ok(mut tasks) = state_clone.tasks.write() {
+                if let Ok(mut tasks) = tasks_clone.write() {
                     if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                         task.progress_steps.push(TaskStep {
                             id: step_id.clone(),
@@ -763,7 +775,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 
                 std::thread::sleep(Duration::from_millis(100));
                 
-                if let Ok(mut tasks) = state_clone.tasks.write() {
+                if let Ok(mut tasks) = tasks_clone.write() {
                     if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                         if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == *step_id) {
                             step.status = StepStatus::Completed;
@@ -783,7 +795,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             match result {
                 Ok(_) => {
                     info!("第 {} 个视频处理成功", i + 1);
-                    if let Ok(mut tasks) = state_clone.tasks.write() {
+                    if let Ok(mut tasks) = tasks_clone.write() {
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.completed_count += 1;
                             if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 1)) {
@@ -799,7 +811,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 }
                 Err(e) => {
                     error!("第 {} 个视频处理失败: {}", i + 1, e);
-                    if let Ok(mut tasks) = state_clone.tasks.write() {
+                    if let Ok(mut tasks) = tasks_clone.write() {
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.status = TaskStatus::Error;
                             task.error_message = Some(e.clone());
@@ -814,7 +826,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         }
         
-        if let Ok(mut tasks) = state_clone.tasks.write() {
+        if let Ok(mut tasks) = tasks_clone.write() {
             if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = TaskStatus::Completed;
                 task.completed_at = Some(Utc::now());
