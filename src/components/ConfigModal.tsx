@@ -43,6 +43,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   };
 
   const handleSegmentCountChange = (count: number) => {
+    if (count < 1) {
+      return;
+    }
+    
     const segments: TemplateSegment[] = [];
     const avgDuration = Math.floor(formData.template_duration / count);
 
@@ -182,10 +186,14 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   };
 
   const handleTemplateDurationChange = (newDuration: number) => {
+    if (newDuration < 0 || isNaN(newDuration)) {
+      return;
+    }
+    
     handleInputChange('template_duration', newDuration);
 
     const segments = [...formData.template_segments];
-    if (segments.length > 0) {
+    if (segments.length > 0 && newDuration > 0) {
       const avgDuration = Math.floor(newDuration / segments.length);
       let remainingDuration = newDuration;
 
