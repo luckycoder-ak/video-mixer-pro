@@ -28,17 +28,22 @@ function App() {
   const loadData = async () => {
     try {
       const data = await invoke<{ configs: VideoConfig[]; tasks: Task[] }>('load_data');
-      setConfigs(data.configs || []);
-      setTasks(data.tasks || []);
+      const loadedConfigs = data.configs || [];
+      const loadedTasks = data.tasks || [];
+      setConfigs(loadedConfigs);
+      setTasks(loadedTasks);
+      return { configs: loadedConfigs, tasks: loadedTasks };
     } catch (error) {
       console.error('Failed to load data:', error);
+      return { configs: [], tasks: [] };
     }
   };
 
   const handleSaveConfig = async (config: VideoConfig) => {
     try {
       await invoke<VideoConfig>('save_config', { config });
-      await loadData();
+      const { configs: loadedConfigs, tasks: loadedTasks } = await loadData();
+      await invoke('save_configs', { configs: loadedConfigs, tasks: loadedTasks });
       setShowConfigModal(false);
       setEditingConfig(null);
       showNotification('保存成功', '配置已保存到本地文件');
@@ -50,7 +55,8 @@ function App() {
   const handleGenerate = async (config: VideoConfig, count: number) => {
     try {
       await invoke('create_task', { configName: config.name, count });
-      await loadData();
+      const { configs: loadedConfigs, tasks: loadedTasks } = await loadData();
+      await invoke('save_configs', { configs: loadedConfigs, tasks: loadedTasks });
       setShowGenerateModal(false);
       setGeneratingConfig(null);
       setActiveTab('tasks');

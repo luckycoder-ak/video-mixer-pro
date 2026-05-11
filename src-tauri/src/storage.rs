@@ -74,3 +74,27 @@ pub fn get_temp_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     Ok(temp_dir)
 }
+
+#[tauri::command]
+pub fn save_configs(
+    app: tauri::AppHandle,
+    configs: Vec<super::config::VideoConfig>,
+    tasks: Vec<super::video_processor::Task>,
+) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
+    let data_file = app_data_dir.join("app_data.json");
+
+    let data = AppData {
+        configs,
+        tasks,
+        usage_records: HashMap::new(),
+    };
+
+    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
+    fs::write(&data_file, content).map_err(|e| e.to_string())?;
+    Ok(())
+}

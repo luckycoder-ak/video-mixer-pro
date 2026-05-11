@@ -30,6 +30,22 @@ fn main() {
             info!("Application setup complete");
             let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
+            
+            let data_file = app_data_dir.join("app_data.json");
+            if data_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&data_file) {
+                    if let Ok(data) = serde_json::from_str::<storage::AppData>(&content) {
+                        let state = app.state::<AppState>();
+                        if let Ok(mut configs) = state.configs.write() {
+                            *configs = data.configs;
+                        }
+                        if let Ok(mut tasks) = state.tasks.write() {
+                            *tasks = data.tasks;
+                        }
+                        info!("Loaded {} configs and {} tasks from file", data.configs.len(), data.tasks.len());
+                    }
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -39,6 +55,7 @@ fn main() {
             config::get_config,
             storage::load_data,
             storage::save_data,
+            storage::save_configs,
             video_processor::create_task,
             video_processor::get_tasks,
             video_processor::get_task_status,
