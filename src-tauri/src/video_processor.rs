@@ -60,11 +60,12 @@ pub struct Task {
 
 impl Task {
     pub fn new(config_name: String, total_count: usize) -> Self {
+        let timestamp = Utc::now().timestamp();
         Self {
             id: Uuid::new_v4().to_string(),
             config_id: String::new(),
             config_name: config_name.clone(),
-            task_name: format!("{}-{}", config_name, total_count),
+            task_name: format!("{}-{}", config_name, timestamp),
             total_count,
             completed_count: 0,
             status: TaskStatus::Pending,
