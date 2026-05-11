@@ -162,7 +162,7 @@ function App() {
       </div>
 
       {/* Content */}
-      <div className="p-6 bg-gray-100 min-h-[500px]">
+      <div className="p-4 bg-gray-50">
         {activeTab === 'configs' ? (
           <ConfigList
             configs={configs}

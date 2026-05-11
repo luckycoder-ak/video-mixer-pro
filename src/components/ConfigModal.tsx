@@ -594,7 +594,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] flex flex-col animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[700px] flex flex-col animate-fadeIn">
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center flex-shrink-0">
           <h3 className="text-white text-lg font-semibold flex items-center gap-2">
             <span>📝</span>
@@ -608,26 +608,26 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           </button>
         </div>
 
-        <div className="flex h-[600px]">
-          <div className="w-48 bg-gray-50 border-r border-gray-200 py-4 flex-shrink-0">
+        <div className="flex flex-1 overflow-hidden">
+          <div className="w-52 bg-gray-50 border-r border-gray-200 py-4 flex-shrink-0">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setCurrentTab(tab.key)}
-                className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${
+                className={`w-full px-5 py-3.5 text-left flex items-center gap-3 transition-colors ${
                   currentTab === tab.key
                     ? 'bg-white text-primary border-l-4 border-primary'
                     : 'text-gray-600 hover:bg-gray-100 border-l-4 border-transparent'
                 }`}
               >
-                <span className="text-lg">{tab.icon}</span>
+                <span className="text-xl">{tab.icon}</span>
                 <span className="text-sm font-medium">{tab.label}</span>
               </button>
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 pb-8">
-            <h3 className="text-lg font-semibold text-gray-800 mb-6 flex items-center gap-2">
+          <div className="flex-1 overflow-y-auto p-5">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <span>{tabs.find((t) => t.key === currentTab)?.icon}</span>
               <span>{tabs.find((t) => t.key === currentTab)?.label}</span>
             </h3>
