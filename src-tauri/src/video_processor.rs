@@ -609,8 +609,6 @@ fn process_single_mode(
     let temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", Uuid::new_v4()));
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
-    let output_path = output_dir.join(output_filename);
-
     let mut segment_files: Vec<PathBuf> = Vec::new();
 
     for (i, segment) in template_segments.iter().enumerate() {
@@ -650,7 +648,7 @@ fn process_single_mode(
     }
     fs::write(&concat_file, concat_content).map_err(|e| e.to_string())?;
 
-    let output_path = PathBuf::from(output_filename);
+    let output_path = output_dir.join(output_filename);
     let output_str = output_path.to_string_lossy().to_string();
     let concat_str = concat_file.to_string_lossy().to_string();
 
