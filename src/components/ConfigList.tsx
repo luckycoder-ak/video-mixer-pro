@@ -1,4 +1,5 @@
 import React from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { VideoConfig } from '../types';
 
 interface Props {
@@ -9,6 +10,14 @@ interface Props {
 }
 
 export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate }) => {
+  const handleOpenFolder = async (folderPath: string) => {
+    try {
+      await invoke('open_folder', { path: folderPath });
+    } catch (error) {
+      console.error('打开文件夹失败:', error);
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
@@ -78,6 +87,13 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
                   className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   编辑
+                </button>
+                <button
+                  onClick={() => handleOpenFolder(config.root_folder)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                  title="打开主目录"
+                >
+                  📂
                 </button>
                 <button
                   onClick={() => onGenerate(config)}

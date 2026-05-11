@@ -8,6 +8,7 @@ export interface TemplateSegment {
 export interface VideoConfig {
   id: string;
   name: string;
+  root_folder: string;
   video_ratio: string;
   audio_path: string;
   audio_duration: number;
@@ -47,6 +48,7 @@ export interface Task {
 export const createDefaultConfig = (): VideoConfig => ({
   id: '',
   name: '',
+  root_folder: '',
   video_ratio: '9:16',
   audio_path: '',
   audio_duration: 0,

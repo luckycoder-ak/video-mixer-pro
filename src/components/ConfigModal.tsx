@@ -125,15 +125,18 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     }
   };
 
-  const handleSelectFolder = async (isTutorialFolder: boolean, index?: number) => {
+  const handleSelectFolder = async (isTutorialFolder: boolean, index?: number, isRootFolder?: boolean) => {
     if (!isTauriEnv) {
       console.warn('请在 Tauri 应用中运行此功能');
       return;
     }
     try {
-      const selected = await open({ directory: true, multiple: false });
+      const defaultPath = isRootFolder ? undefined : (formData.root_folder || undefined);
+      const selected = await open({ directory: true, multiple: false, defaultPath });
       if (selected) {
-        if (isTutorialFolder) {
+        if (isRootFolder) {
+          handleInputChange('root_folder', selected);
+        } else if (isTutorialFolder) {
           handleInputChange('tutorial_folder', selected);
         } else if (index !== undefined) {
           handleSegmentChange(index, 'source_folder', selected);
@@ -163,6 +166,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const isDurationValid = totalSegmentDuration === formData.template_duration;
 
   const validateBasicTab = (): boolean => {
+    if (!formData.root_folder) {
+      alert('请选择主目录');
+      return false;
+    }
     if (!formData.name.trim()) {
       alert('请输入配置名称');
       return false;
@@ -312,6 +319,27 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   const renderBasicTab = () => (
     <div className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          主目录 <span className="text-red-500">*</span>
+        </label>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleSelectFolder(false, undefined, true)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            选择主目录
+          </button>
+          <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+            <span>📁</span>
+            <span className="truncate">
+              {formData.root_folder || '请选择主目录...'}
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">后续目录选择将基于此目录进行，确保所有素材在同一目录下</p>
+      </div>
+
       <div className="grid grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">

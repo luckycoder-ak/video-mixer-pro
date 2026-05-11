@@ -24,6 +24,7 @@ pub enum CropMode {
 pub struct VideoConfig {
     pub id: String,
     pub name: String,
+    pub root_folder: String,
     pub video_ratio: String,
     pub audio_path: String,
     pub audio_duration: u32,
