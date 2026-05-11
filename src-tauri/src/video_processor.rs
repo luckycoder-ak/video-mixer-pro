@@ -639,6 +639,31 @@ fn process_quadrant_mode_optimized(
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn escape_subtitle_path(path: &str) -> String {
+    path.replace('\\', "\\\\").replace(':', "\\\\:")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn escape_subtitle_path(path: &str) -> String {
+    path.replace('\\', "\\\\").replace(':', "\\:")
+}
+
+#[cfg(target_os = "windows")]
+fn to_ffmpeg_path(path: &PathBuf) -> String {
+    let path_str = path.to_string_lossy();
+    if path_str.starts_with("\\\\?\\") {
+        path_str[4..].replace('\\', "/")
+    } else {
+        path_str.replace('\\', "/")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn to_ffmpeg_path(path: &PathBuf) -> String {
+    path.to_string_lossy().to_string()
+}
+
 fn get_random_transition_type() -> String {
     let transitions = vec![
         "fade".to_string(),
@@ -834,8 +859,7 @@ fn process_single_mode(
     let concat_file = temp_dir.join("concat.txt");
     let mut concat_content = String::new();
     for file in &transition_segment_files {
-        concat_content.push_str(&format!("file '{}'", file.to_string_lossy()));
-        concat_content.push('\n');
+        concat_content.push_str(&format!("file '{}'\n", to_ffmpeg_path(file)));
     }
     fs::write(&concat_file, concat_content).map_err(|e| e.to_string())?;
 
@@ -847,7 +871,7 @@ fn process_single_mode(
     };
     
     let output_str = temp_output_path.to_string_lossy().to_string();
-    let concat_str = concat_file.to_string_lossy().to_string();
+    let concat_str = to_ffmpeg_path(&concat_file);
 
     let encoder = detect_best_encoder();
     let mut args = vec![
@@ -906,7 +930,7 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     let input_str = input_path.to_string_lossy().to_string();
     let output_str = output_path.to_string_lossy().to_string();
     
-    let subtitle_path_escaped = subtitle_path.replace('\\', "\\\\").replace(':', "\\:").replace('\'', "\\'");
+    let subtitle_path_escaped = escape_subtitle_path(subtitle_path);
     
     let encoder = detect_best_encoder();
     let vf = format!("subtitles='{}'", subtitle_path_escaped);
