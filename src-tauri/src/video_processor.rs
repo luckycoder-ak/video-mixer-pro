@@ -79,6 +79,7 @@ impl Task {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct VideoInfo {
     pub path: PathBuf,
     pub duration: f64,
@@ -144,6 +145,7 @@ pub fn calculate_video_dimensions(ratio: &str) -> (u32, u32) {
     }
 }
 
+#[allow(dead_code)]
 pub fn calculate_scaled_dimensions(
     source_width: u32,
     source_height: u32,
@@ -156,6 +158,7 @@ pub fn calculate_scaled_dimensions(
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProcessedSegment {
     pub output_path: PathBuf,
     pub duration: f64,

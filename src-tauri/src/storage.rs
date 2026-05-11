@@ -57,11 +57,13 @@ pub fn save_data(app: tauri::AppHandle, data: AppData) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn get_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     Ok(app_data_dir)
 }
 
+#[allow(dead_code)]
 pub fn get_output_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = get_app_data_dir(app)?;
     let output_dir = app_data_dir.join("output");
@@ -69,6 +71,7 @@ pub fn get_output_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(output_dir)
 }
 
+#[allow(dead_code)]
 pub fn get_temp_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = get_app_data_dir(app)?;
     let temp_dir = app_data_dir.join("temp");
