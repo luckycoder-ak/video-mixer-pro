@@ -662,6 +662,7 @@ fn get_random_transition_type() -> String {
         "wiperight".to_string(),
         "wipeup".to_string(),
         "wipedown".to_string(),
+        "hblur".to_string(),
     ];
     
     let index = rand::random::<usize>() % transitions.len();
@@ -735,6 +736,13 @@ fn create_transition_effect(
             "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipedown:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
         ),
+        "hblur" => {
+            let blur_val = "10:0".to_string();
+            format!(
+                "[0:v]trim=0:{},setpts=PTS-STARTPTS,boxblur={}[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS,boxblur={}[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+                half_duration_str, blur_val, half_duration_str, half_duration_str, blur_val, duration_str, half_duration_str
+            )
+        },
         _ => format!(
             "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
             half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
@@ -779,7 +787,7 @@ fn process_single_mode(
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
     let mut start_time: f32 = 0.0;
-    let transition_duration: f32 = 1.0;
+    let transition_duration: f32 = 0.5;
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;
