@@ -296,7 +296,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               
               {progressModal.progress_steps && progressModal.progress_steps.length > 0 ? (
                 <div className="space-y-3">
-                  {progressModal.progress_steps.map((step, index) => (
+                  {progressModal.progress_steps.map((step) => (
                     <div
                       key={step.id}
                       className={`flex items-start gap-3 p-3 rounded-lg border ${getStepStatusColor(step.status)}`}
