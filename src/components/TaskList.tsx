@@ -158,16 +158,30 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const getStepOrder = (id: string): number => {
     const orderMap: Record<string, number> = {
       'init': 0,
-      'video_1': 1,
-      'video_2': 2,
-      'video_3': 3,
-      'video_4': 4,
-      'video_5': 5,
-      'finish': 99,
+      'video_1': 10,
+      'video_2': 20,
+      'video_3': 30,
+      'video_4': 40,
+      'video_5': 50,
+      'finish': 999,
     };
     if (orderMap[id] !== undefined) return orderMap[id];
-    const num = parseInt(id.replace(/\D/g, ''), 10);
-    return isNaN(num) ? 50 : num;
+    
+    // 处理子步骤 segment_{i}_*
+    if (id.startsWith('segment_')) {
+      const parts = id.split('_');
+      const videoIndex = parseInt(parts[1], 10);
+      const subStep = parts[2];
+      const subOrderMap: Record<string, number> = {
+        'scan': 0,
+        'process': 1,
+        'merge': 2
+      };
+      // 子步骤在对应的 video 步骤之后
+      return videoIndex * 10 + 1 + (subOrderMap[subStep] || 0);
+    }
+    
+    return 100;
   };
 
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
@@ -394,28 +408,31 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             
             {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
               <div className="space-y-2">
-                {[...hoveredTask.progress_steps].sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id)).map((step) => (
-                  <div
-                    key={step.id}
-                    className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${getStepStatusColor(step.status)}`}
-                  >
-                    <div className="mt-0.5">{getStepIcon(step.status)}</div>
-                    <div className="flex-1">
-                      <p className={`font-medium ${
-                        step.status === 'completed' ? 'text-green-700' :
-                        step.status === 'running' ? 'text-blue-700' :
-                        step.status === 'error' ? 'text-red-700' : 'text-gray-600'
-                      }`}>
-                        {step.name}
-                      </p>
-                      {step.error && (
-                        <p className="text-red-500 text-xs mt-1 truncate">
-                          {step.error}
+                {[...hoveredTask.progress_steps].sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id)).map((step) => {
+                  const isSubStep = step.id.startsWith('segment_');
+                  return (
+                    <div
+                      key={step.id}
+                      className={`flex items-start gap-2 rounded-lg border text-xs ${getStepStatusColor(step.status)} ${isSubStep ? 'ml-4' : ''} ${isSubStep ? 'py-1.5 px-2' : 'p-2'}`}
+                    >
+                      <div className="mt-0.5">{getStepIcon(step.status)}</div>
+                      <div className="flex-1">
+                        <p className={`font-medium ${
+                          step.status === 'completed' ? 'text-green-700' :
+                          step.status === 'running' ? 'text-blue-700' :
+                          step.status === 'error' ? 'text-red-700' : 'text-gray-600'
+                        } ${isSubStep ? 'text-xs' : ''}`}>
+                          {step.name}
                         </p>
-                      )}
+                        {step.error && (
+                          <p className="text-red-500 text-xs mt-1 truncate">
+                            {step.error}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center text-gray-500 py-4">
