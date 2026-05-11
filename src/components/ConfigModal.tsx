@@ -11,10 +11,21 @@ interface Props {
   onClose: () => void;
 }
 
+type TabType = 'basic' | 'template' | 'tutorial';
+
 export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const [formData, setFormData] = useState<VideoConfig>(config || createDefaultConfig());
   const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set([1]));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentTab, setCurrentTab] = useState<TabType>('basic');
+
+  const tabs: { key: TabType; label: string; icon: string }[] = [
+    { key: 'basic', label: '基础信息配置', icon: '⚙️' },
+    { key: 'template', label: '模板片段配置', icon: '🎬' },
+    { key: 'tutorial', label: '教程素材配置', icon: '📚' },
+  ];
+
+  const currentTabIndex = tabs.findIndex((t) => t.key === currentTab);
 
   useEffect(() => {
     if (config) {
@@ -47,7 +58,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     if (count < 1) {
       return;
     }
-    
+
     const segments: TemplateSegment[] = [];
     const avgDuration = Math.floor(formData.template_duration / count);
 
@@ -151,29 +162,48 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const durationDiff = formData.template_duration - totalSegmentDuration;
   const isDurationValid = totalSegmentDuration === formData.template_duration;
 
-  const handleSubmit = async () => {
+  const validateBasicTab = (): boolean => {
     if (!formData.name.trim()) {
       alert('请输入配置名称');
-      return;
+      return false;
     }
     if (!formData.audio_path) {
       alert('请选择音频文件');
-      return;
+      return false;
     }
-    if (!formData.tutorial_folder) {
-      alert('请选择教程片段文件夹');
-      return;
-    }
+    return true;
+  };
+
+  const validateTemplateTab = (): boolean => {
     if (!isDurationValid) {
       alert(`片段时长验证失败：当前总时长 ${totalSegmentDuration} 秒，模板片段总时长 ${formData.template_duration} 秒`);
-      return;
+      return false;
     }
-
     const hasEmptyFolders = formData.template_segments.some((s) => !s.source_folder);
     if (hasEmptyFolders) {
       alert('请为所有模板片段选择来源文件夹');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleNextTab = () => {
+    const currentIndex = tabs.findIndex((t) => t.key === currentTab);
+    if (currentIndex < tabs.length - 1) {
+      setCurrentTab(tabs[currentIndex + 1].key);
+    }
+  };
+
+  const handlePrevTab = () => {
+    const currentIndex = tabs.findIndex((t) => t.key === currentTab);
+    if (currentIndex > 0) {
+      setCurrentTab(tabs[currentIndex - 1].key);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!validateBasicTab()) return;
+    if (!validateTemplateTab()) return;
 
     setIsSubmitting(true);
 
@@ -195,7 +225,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     if (newDuration < 0 || isNaN(newDuration)) {
       return;
     }
-    
+
     handleInputChange('template_duration', newDuration);
 
     const segments = [...formData.template_segments];
@@ -280,10 +310,266 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     }
   };
 
+  const renderBasicTab = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            配置名称 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => handleInputChange('name', e.target.value)}
+            placeholder="请输入配置名称，要求不重复"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">视频比例</label>
+          <select
+            value={formData.video_ratio}
+            onChange={(e) => handleInputChange('video_ratio', e.target.value)}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          >
+            <option value="9:16">9:16 (竖屏)</option>
+            <option value="16:9">16:9 (横屏)</option>
+            <option value="1:1">1:1 (方形)</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          音频文件 <span className="text-red-500">*</span>
+        </label>
+        <div className="flex gap-3">
+          <button
+            onClick={handleSelectAudio}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            选择音频文件
+          </button>
+          <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+            <span>🎵</span>
+            <span className="truncate">
+              {formData.audio_path || '请选择音频文件...'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">输出文件夹</label>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleSelectFolder(false, undefined)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            选择输出文件夹
+          </button>
+          <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+            <span>📂</span>
+            <span className="truncate">
+              {formData.output_folder || '未选择（默认下载目录）'}
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-1">生成的视频将保存到此文件夹，命名格式：配置名称-1.mp4, 配置名称-2.mp4...</p>
+      </div>
+
+      {formData.audio_duration > 0 && (
+        <div className="p-4 bg-blue-50 rounded-lg flex items-center gap-3 text-blue-800">
+          <span className="text-xl">📊</span>
+          <div>
+            <p className="font-medium">
+              <strong>音频总时长: {formData.audio_duration} 秒</strong>
+            </p>
+            <p className="text-sm mt-1 opacity-80">模板片段总时长应与此一致</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderTemplateTab = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            模板片段总时长 <span className="text-gray-400">(秒)</span>
+          </label>
+          <input
+            type="number"
+            value={formData.template_duration}
+            onChange={(e) => handleTemplateDurationChange(parseInt(e.target.value) || 0)}
+            min="1"
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">片段数量</label>
+          <select
+            value={formData.segment_count}
+            onChange={(e) => handleSegmentCountChange(parseInt(e.target.value))}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <option key={n} value={n}>
+                {n} 个片段
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {formData.template_segments.map((segment, index) => (
+          <div key={segment.segment_index} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+            <div
+              className="px-4 py-3 bg-white border-b border-gray-200 flex justify-between items-center cursor-pointer"
+              onClick={() => toggleSegment(segment.segment_index)}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                  {segment.segment_index}
+                </div>
+                <span className="font-semibold text-gray-800">片段 {segment.segment_index}</span>
+                <span className="text-gray-500 text-sm">({segment.duration}秒)</span>
+                {segment.source_folder && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">已设置</span>
+                )}
+              </div>
+              <span className={`text-gray-500 transition-transform ${expandedSegments.has(segment.segment_index) ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            </div>
+
+            {expandedSegments.has(segment.segment_index) && (
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">片段来源文件夹</label>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleSelectFolder(false, index)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                    >
+                      选择文件夹
+                    </button>
+                    <div className="flex-1 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+                      <span>📁</span>
+                      <span className="truncate">
+                        {segment.source_folder || '请选择文件夹...'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">裁剪模式</label>
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    {(['single', 'dual', 'quadrant'] as const).map((mode) => (
+                      <div
+                        key={mode}
+                        onClick={() => handleSegmentChange(index, 'crop_mode', mode)}
+                        className={`p-3 border-2 rounded-xl cursor-pointer transition-all text-center ${
+                          segment.crop_mode === mode
+                            ? 'border-primary bg-primary/5'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">
+                          {mode === 'single' ? '📹' : mode === 'dual' ? '🖼️' : '📱'}
+                        </div>
+                        <div className="text-xs font-medium text-gray-700">
+                          {mode === 'single' ? '单视频' : mode === 'dual' ? '双列' : '四宫格'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-gray-900 rounded-lg p-3">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">效果预览</p>
+                    <div className="w-20 mx-auto">
+                      {getCropModePreview(segment.crop_mode)}
+                    </div>
+                  </div>
+
+                  <div className="mt-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-500 flex items-start gap-2">
+                    <span className="mt-0.5">💡</span>
+                    <span>{getCropModeHint(segment.crop_mode)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">片段时长 (秒)</label>
+                  <input
+                    type="number"
+                    value={segment.duration}
+                    onChange={(e) => handleSegmentChange(index, 'duration', parseInt(e.target.value) || 0)}
+                    min="1"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className={`p-4 rounded-lg flex items-center gap-3 ${
+        isDurationValid ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+      }`}>
+        <span className="text-xl">{isDurationValid ? '✓' : '✗'}</span>
+        <div>
+          <p className="font-medium">
+            时长验证: {formData.template_segments.map((s) => s.duration).join(' + ')} = {totalSegmentDuration} 秒
+          </p>
+          {!isDurationValid && (
+            <p className="text-sm mt-1">
+              {durationDiff > 0 ? `还差 ${durationDiff} 秒` : `超出 ${Math.abs(durationDiff)} 秒`}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTutorialTab = () => (
+    <div className="space-y-6">
+      <div>
+        <h4 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+          <span>📚</span>
+          <span>教程素材配置</span>
+        </h4>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">教程素材来源文件夹</label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleSelectFolder(true)}
+              className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              选择文件夹
+            </button>
+            <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+              <span>📁</span>
+              <span className="truncate">
+                {formData.tutorial_folder || '请选择文件夹...'}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">
+            说明：教程素材用于在模板片段之间插入过渡内容，相同片段不会重复使用
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-fadeIn">
-        {/* Header */}
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex justify-between items-center">
           <h3 className="text-white text-lg font-semibold flex items-center gap-2">
             <span>📝</span>
@@ -297,300 +583,84 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                配置名称 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="请输入配置名称，要求不重复"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">视频比例</label>
-              <select
-                value={formData.video_ratio}
-                onChange={(e) => handleInputChange('video_ratio', e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-              >
-                <option value="9:16">9:16 (竖屏)</option>
-                <option value="16:9">16:9 (横屏)</option>
-                <option value="1:1">1:1 (方形)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Audio */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              音频文件 <span className="text-red-500">*</span>
-            </label>
-            <div className="flex gap-3">
+        <div className="flex flex-1 overflow-hidden">
+          <div className="w-48 bg-gray-50 border-r border-gray-200 py-4">
+            {tabs.map((tab) => (
               <button
-                onClick={handleSelectAudio}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                key={tab.key}
+                onClick={() => setCurrentTab(tab.key)}
+                className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors ${
+                  currentTab === tab.key
+                    ? 'bg-white text-primary border-l-4 border-primary'
+                    : 'text-gray-600 hover:bg-gray-100 border-l-4 border-transparent'
+                }`}
               >
-                选择音频文件
+                <span className="text-lg">{tab.icon}</span>
+                <span className="text-sm font-medium">{tab.label}</span>
               </button>
-              <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
-                <span>🎵</span>
-                <span className="truncate">
-                  {formData.audio_path || '请选择音频文件...'}
-                </span>
-              </div>
-            </div>
+            ))}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">输出文件夹</label>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleSelectFolder(false, undefined)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                选择输出文件夹
-              </button>
-              <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
-                <span>📂</span>
-                <span className="truncate">
-                  {formData.output_folder || '未选择（默认下载目录）'}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">生成的视频将保存到此文件夹，命名格式：配置名称-1.mp4, 配置名称-2.mp4...</p>
+          <div className="flex-1 overflow-y-auto p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-6 flex items-center gap-2">
+              <span>{tabs.find((t) => t.key === currentTab)?.icon}</span>
+              <span>{tabs.find((t) => t.key === currentTab)?.label}</span>
+            </h3>
+
+            {currentTab === 'basic' && renderBasicTab()}
+            {currentTab === 'template' && renderTemplateTab()}
+            {currentTab === 'tutorial' && renderTutorialTab()}
           </div>
-
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-
-          {/* Template Segments */}
-          <div>
-            <h4 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span>🎬</span>
-              <span>模板片段配置</span>
-            </h4>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  模板片段总时长 <span className="text-gray-400">(由用户填写)</span>
-                </label>
-                <input
-                  type="number"
-                  value={formData.template_duration}
-                  onChange={(e) => handleTemplateDurationChange(parseInt(e.target.value) || 0)}
-                  min="1"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-                <p className="text-xs text-gray-400 mt-1">模板片段的时长总和（秒）</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">片段数量</label>
-                <select
-                  value={formData.segment_count}
-                  onChange={(e) => handleSegmentCountChange(parseInt(e.target.value))}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                    <option key={n} value={n}>
-                      {n} 个片段
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Segment Cards */}
-            <div className="space-y-4">
-              {formData.template_segments.map((segment, index) => (
-                <div key={segment.segment_index} className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                  <div
-                    className="px-4 py-3 bg-white border-b border-gray-200 flex justify-between items-center cursor-pointer"
-                    onClick={() => toggleSegment(segment.segment_index)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                        {segment.segment_index}
-                      </div>
-                      <span className="font-semibold text-gray-800">片段 {segment.segment_index} 配置</span>
-                      {segment.source_folder && (
-                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">已设置</span>
-                      )}
-                    </div>
-                    <span className={`text-gray-500 transition-transform ${expandedSegments.has(segment.segment_index) ? 'rotate-180' : ''}`}>
-                      ▼
-                    </span>
-                  </div>
-
-                  {expandedSegments.has(segment.segment_index) && (
-                    <div className="p-4 space-y-4">
-                      {/* Source Folder */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">片段来源文件夹</label>
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => handleSelectFolder(false, index)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                          >
-                            选择文件夹
-                          </button>
-                          <div className="flex-1 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
-                            <span>📁</span>
-                            <span className="truncate">
-                              {segment.source_folder || '请选择文件夹...'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Crop Mode */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">裁剪模式</label>
-                        <div className="grid grid-cols-3 gap-3 mb-3">
-                          {(['single', 'dual', 'quadrant'] as const).map((mode) => (
-                            <div
-                              key={mode}
-                              onClick={() => handleSegmentChange(index, 'crop_mode', mode)}
-                              className={`p-4 border-2 rounded-xl cursor-pointer transition-all text-center ${
-                                segment.crop_mode === mode
-                                  ? 'border-primary bg-primary/5'
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
-                            >
-                              <div className="text-3xl mb-2">
-                                {mode === 'single' ? '📹' : mode === 'dual' ? '🖼️' : '📱'}
-                              </div>
-                              <div className="text-sm font-medium text-gray-700">
-                                {mode === 'single' ? '单视频模式' : mode === 'dual' ? '双列模式' : '四宫格模式'}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Preview */}
-                        <div className="bg-gray-900 rounded-lg p-4">
-                          <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">效果预览</p>
-                          <div className="w-24 mx-auto">
-                            {getCropModePreview(segment.crop_mode)}
-                          </div>
-                        </div>
-
-                        <div className="mt-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-500 flex items-start gap-2">
-                          <span className="mt-0.5">💡</span>
-                          <span>{getCropModeHint(segment.crop_mode)}</span>
-                        </div>
-                      </div>
-
-                      {/* Duration */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">片段时长 (秒)</label>
-                        <input
-                          type="number"
-                          value={segment.duration}
-                          onChange={(e) => handleSegmentChange(index, 'duration', parseInt(e.target.value) || 0)}
-                          min="1"
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />
-
-          {/* Tutorial Segment */}
-          <div>
-            <h4 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span>📚</span>
-              <span>教程片段配置</span>
-              <span className="text-red-500">*</span>
-            </h4>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">教程片段来源文件夹</label>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleSelectFolder(true)}
-                  className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  选择文件夹
-                </button>
-                <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
-                  <span>📁</span>
-                  <span className="truncate">
-                    {formData.tutorial_folder || '请选择文件夹...'}
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                注意：相同片段不会重复使用，系统会自动进行全局去重处理
-              </p>
-            </div>
-          </div>
-
-          {/* Validation */}
-          <div className={`p-4 rounded-lg flex items-center gap-3 ${
-            isDurationValid ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-          }`}>
-            <span className="text-xl">{isDurationValid ? '✓' : '✗'}</span>
-            <div>
-              <p className="font-medium">
-                片段时长验证: {formData.template_segments.map((s) => s.duration).join(' + ')} = {totalSegmentDuration} 秒
-              </p>
-              {!isDurationValid && (
-                <p className="text-sm mt-1">
-                  {durationDiff > 0 ? `还差 ${durationDiff} 秒` : `超出 ${Math.abs(durationDiff)} 秒`}，模板片段总时长为 {formData.template_duration} 秒
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Total Duration Info */}
-          {formData.audio_duration > 0 && (
-            <div className="p-4 bg-blue-50 rounded-lg flex items-center gap-3 text-blue-800">
-              <span className="text-xl">📊</span>
-              <div>
-                <p className="font-medium">
-                  <strong>总时长: {formData.audio_duration} 秒</strong>
-                </p>
-                <p className="text-sm mt-1 opacity-80">以音频长度为准，模板片段将自动调整至该长度</p>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isDurationValid}
-            className="px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isSubmitting ? (
-              <>
-                <span>⏳</span>
-                <span>保存中...</span>
-              </>
-            ) : (
-              '保存'
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+          <div className="flex gap-2">
+            {currentTabIndex > 0 && (
+              <button
+                onClick={handlePrevTab}
+                className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-2"
+              >
+                <span>←</span>
+                <span>上一页</span>
+              </button>
             )}
-          </button>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              取消
+            </button>
+            {currentTabIndex < tabs.length - 1 ? (
+              <button
+                onClick={handleNextTab}
+                className="px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+              >
+                <span>下一页</span>
+                <span>→</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting || !isDurationValid}
+                className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span>⏳</span>
+                    <span>保存中...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✓</span>
+                    <span>保存</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
