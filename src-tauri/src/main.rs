@@ -35,6 +35,8 @@ fn main() {
             if data_file.exists() {
                 if let Ok(content) = std::fs::read_to_string(&data_file) {
                     if let Ok(data) = serde_json::from_str::<storage::AppData>(&content) {
+                        let configs_len = data.configs.len();
+                        let tasks_len = data.tasks.len();
                         let state = app.state::<AppState>();
                         if let Ok(mut configs) = state.configs.write() {
                             *configs = data.configs;
@@ -42,7 +44,7 @@ fn main() {
                         if let Ok(mut tasks) = state.tasks.write() {
                             *tasks = data.tasks;
                         }
-                        info!("Loaded {} configs and {} tasks from file", data.configs.len(), data.tasks.len());
+                        info!("Loaded {} configs and {} tasks from file", configs_len, tasks_len);
                     }
                 }
             }

@@ -7,7 +7,6 @@ use std::process::Command;
 use std::thread;
 use walkdir::WalkDir;
 use rand::seq::SliceRandom;
-use rand::Rng;
 use log::{info, error, warn};
 
 use crate::AppState;
