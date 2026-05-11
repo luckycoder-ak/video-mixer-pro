@@ -45,10 +45,10 @@ bash install.sh
 npm install
 
 # 2. 开发模式运行（直接预览）
-npm run dev
+npm run tauri dev
 
 # 3. 完整构建（生成安装包）
-npm run build:all
+npm run tauri build
 ```
 
 ---
