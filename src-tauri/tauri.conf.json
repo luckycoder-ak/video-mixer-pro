@@ -40,7 +40,6 @@
     ]
   },
   "plugins": {
-    "dialog": {},
     "fs": {
       "scope": {
         "allow": ["**"],
