@@ -440,10 +440,9 @@ fn process_quadrant_mode_optimized(
     let br_scaled_str = br_scaled.to_string_lossy().to_string();
     let duration_str = duration.to_string();
 
-    let blur_filter = get_quality_blur_filter(quad_width, quad_height);
     let vf_base = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,split[s0][s1];[s1]{}[b];[b][s0]overlay=0:0",
-        quad_width, quad_height, blur_filter
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=black@0",
+        quad_width, quad_height, quad_width, quad_height
     );
 
     let mut extra_vec = encoder.extra_args.clone();
