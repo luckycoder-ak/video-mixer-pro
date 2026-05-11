@@ -16,7 +16,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       onRefresh();
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [onRefresh]);
