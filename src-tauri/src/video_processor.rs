@@ -701,8 +701,8 @@ fn process_single_mode(
                 let encoder = detect_best_encoder();
 
                 let vf = format!(
-                    "scale={}:{}:force_original_aspect_ratio=decrease,crop={}:{},pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=white@0.5",
-                    output_width * 3 / 4, output_height * 3 / 4, output_width * 3 / 4, output_height * 3 / 4, output_width, output_height
+                    "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:white@0.5",
+                    output_width, output_height, output_width, output_height
                 );
 
                 let args: Vec<&str> = vec![
