@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { VideoConfig, TemplateSegment, createDefaultConfig } from '../types';
 
+const isTauriEnv = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
+
 interface Props {
   config: VideoConfig | null;
   onSave: (config: VideoConfig) => void;
@@ -81,6 +83,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   };
 
   const handleSelectAudio = async () => {
+    if (!isTauriEnv) {
+      console.warn('请在 Tauri 应用中运行此功能');
+      return;
+    }
     try {
       const selected = await open({
         multiple: false,
@@ -96,6 +102,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   };
 
   const handleSelectFolder = async (isTutorialFolder: boolean, index?: number) => {
+    if (!isTauriEnv) {
+      console.warn('请在 Tauri 应用中运行此功能');
+      return;
+    }
     try {
       const selected = await open({ directory: true, multiple: false });
       if (selected) {
