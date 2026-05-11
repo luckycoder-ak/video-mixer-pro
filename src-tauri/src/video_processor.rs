@@ -645,6 +645,7 @@ fn process_quadrant_mode_optimized(
 
 fn process_single_mode(
     template_segments: &[super::config::TemplateSegment],
+    tutorial_folder: &str,
     video_ratio: &str,
     audio_path: &str,
     _audio_duration: u32,
@@ -657,6 +658,7 @@ fn process_single_mode(
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
     let mut start_time: u32 = 0;
+    let mut used_tutorial_videos: HashSet<String> = HashSet::new();
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;
@@ -687,6 +689,43 @@ fn process_single_mode(
 
         segment_files.push(processed.output_path);
         start_time += segment.duration;
+
+        if !tutorial_folder.is_empty() && i < template_segments.len() - 1 {
+            let tutorial_videos = get_video_files(tutorial_folder)?;
+            if !tutorial_videos.is_empty() {
+                let selected_tutorial = select_random_videos(&tutorial_videos, 1, &used_tutorial_videos)?;
+                if !selected_tutorial.is_empty() {
+                    let tutorial = &selected_tutorial[0];
+                    let tutorial_scaled = temp_dir.join(format!("tutorial_{}.mp4", Uuid::new_v4()));
+                    let tutorial_duration = 3;
+                    
+                    let input_str = tutorial.to_string_lossy().to_string();
+                    let output_str = tutorial_scaled.to_string_lossy().to_string();
+                    let encoder = detect_best_encoder();
+
+                    let vf = format!(
+                        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
+                        output_width, output_height, output_width, output_height
+                    );
+
+                    let args: Vec<&str> = vec![
+                        "-hide_banner", "-loglevel", "error",
+                        "-ss", &start_time.to_string(),
+                        "-i", &input_str,
+                        "-vf", &vf,
+                        "-c:v", &encoder.video_codec,
+                        "-t", &tutorial_duration.to_string(),
+                        "-an", "-y", &output_str,
+                    ];
+
+                    run_ffmpeg_fast(&args)?;
+
+                    segment_files.push(tutorial_scaled);
+                    used_tutorial_videos.insert(tutorial.to_string_lossy().to_string());
+                    start_time += tutorial_duration as u32;
+                }
+            }
+        }
     }
 
     let concat_file = temp_dir.join("concat.txt");
@@ -862,6 +901,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             
             let result = process_single_mode(
                 &config.template_segments,
+                &config.tutorial_folder,
                 &config.video_ratio,
                 &config.audio_path,
                 config.audio_duration,
