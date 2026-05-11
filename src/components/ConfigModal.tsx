@@ -15,7 +15,7 @@ type TabType = 'basic' | 'template' | 'tutorial';
 
 export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const [formData, setFormData] = useState<VideoConfig>(config || createDefaultConfig());
-  const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set([1]));
+  const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTab, setCurrentTab] = useState<TabType>('basic');
 
@@ -30,10 +30,10 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   useEffect(() => {
     if (config) {
       setFormData(config);
-      setExpandedSegments(new Set([1]));
+      setExpandedSegments(new Set());
     } else {
       setFormData(createDefaultConfig());
-      setExpandedSegments(new Set([1]));
+      setExpandedSegments(new Set());
     }
   }, [config]);
 
@@ -463,14 +463,21 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                   {segment.segment_index}
                 </div>
                 <span className="font-semibold text-gray-800">片段 {segment.segment_index}</span>
-                <span className="text-gray-500 text-sm">({segment.duration}秒)</span>
                 {segment.source_folder && (
                   <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">已设置</span>
                 )}
               </div>
-              <span className={`text-gray-500 transition-transform ${expandedSegments.has(segment.segment_index) ? 'rotate-180' : ''}`}>
-                ▼
-              </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                    {segment.crop_mode === 'single' ? '单视频' : segment.crop_mode === 'dual' ? '双列' : '四宫格'}
+                  </span>
+                  <span className="text-gray-500 text-sm">{segment.duration}秒</span>
+                </div>
+                <span className={`text-gray-500 transition-transform ${expandedSegments.has(segment.segment_index) ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </div>
             </div>
 
             {expandedSegments.has(segment.segment_index) && (
@@ -619,7 +626,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 pb-8">
             <h3 className="text-lg font-semibold text-gray-800 mb-6 flex items-center gap-2">
               <span>{tabs.find((t) => t.key === currentTab)?.icon}</span>
               <span>{tabs.find((t) => t.key === currentTab)?.label}</span>
