@@ -656,6 +656,10 @@ fn process_single_mode(
         args.extend(&["-i", audio_path]);
     }
 
+    if !audio_path.is_empty() {
+        args.extend(&["-map", "0:v", "-map", "1:a"]);
+    }
+
     args.extend(&[
         "-c:v", &encoder.video_codec,
         "-c:a", &encoder.audio_codec,
