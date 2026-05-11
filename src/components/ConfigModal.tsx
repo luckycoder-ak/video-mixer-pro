@@ -125,6 +125,24 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     }
   };
 
+  const handleSelectSubtitle = async () => {
+    if (!isTauriEnv) {
+      console.warn('请在 Tauri 应用中运行此功能');
+      return;
+    }
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Subtitle', extensions: ['srt'] }],
+      });
+      if (selected) {
+        handleInputChange('subtitle_path', selected);
+      }
+    } catch (error) {
+      console.error('选择字幕文件失败:', error);
+    }
+  };
+
   const handleSelectFolder = async (isTutorialFolder: boolean, index?: number, isRootFolder?: boolean) => {
     if (!isTauriEnv) {
       console.warn('请在 Tauri 应用中运行此功能');
@@ -384,6 +402,34 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
               {formData.audio_path || '请选择音频文件...'}
             </span>
           </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          字幕文件 <span className="text-gray-400">(可选，仅支持 .srt 格式)</span>
+        </label>
+        <div className="flex gap-3">
+          <button
+            onClick={handleSelectSubtitle}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            选择字幕文件
+          </button>
+          <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+            <span>📝</span>
+            <span className="truncate">
+              {formData.subtitle_path || '未选择（可选）'}
+            </span>
+          </div>
+          {formData.subtitle_path && (
+            <button
+              onClick={() => handleInputChange('subtitle_path', '')}
+              className="px-4 py-2.5 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              清除
+            </button>
+          )}
         </div>
       </div>
 

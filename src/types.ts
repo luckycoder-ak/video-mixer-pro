@@ -12,6 +12,7 @@ export interface VideoConfig {
   video_ratio: string;
   audio_path: string;
   audio_duration: number;
+  subtitle_path: string;
   template_duration: number;
   segment_count: number;
   template_segments: TemplateSegment[];
@@ -52,6 +53,7 @@ export const createDefaultConfig = (): VideoConfig => ({
   video_ratio: '9:16',
   audio_path: '',
   audio_duration: 0,
+  subtitle_path: '',
   template_duration: 150,
   segment_count: 3,
   template_segments: [

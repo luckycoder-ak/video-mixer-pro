@@ -645,6 +645,7 @@ fn process_single_mode(
     video_ratio: &str,
     audio_path: &str,
     _audio_duration: f32,
+    subtitle_path: &str,
     output_dir: &PathBuf,
     output_filename: &str,
 ) -> Result<(), String> {
@@ -723,8 +724,14 @@ fn process_single_mode(
     }
     fs::write(&concat_file, concat_content).map_err(|e| e.to_string())?;
 
-    let output_path = output_dir.join(output_filename);
-    let output_str = output_path.to_string_lossy().to_string();
+    let mut output_path = output_dir.join(output_filename);
+    let temp_output_path = if !subtitle_path.is_empty() {
+        temp_dir.join(format!("temp_{}", output_filename))
+    } else {
+        output_path.clone()
+    };
+    
+    let output_str = temp_output_path.to_string_lossy().to_string();
     let concat_str = concat_file.to_string_lossy().to_string();
 
     let encoder = detect_best_encoder();
@@ -762,12 +769,47 @@ fn process_single_mode(
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
     run_ffmpeg_fast(&args_ref)?;
 
+    if !subtitle_path.is_empty() {
+        add_subtitles(&temp_output_path, subtitle_path, &output_path)?;
+    }
+
     for file in &segment_files {
         let _ = fs::remove_file(file);
     }
     let _ = fs::remove_file(&concat_file);
     let _ = fs::remove_dir(&temp_dir);
 
+    Ok(())
+}
+
+fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBuf) -> Result<(), String> {
+    info!("添加字幕: subtitle_path={}", subtitle_path);
+    
+    let input_str = input_path.to_string_lossy().to_string();
+    let output_str = output_path.to_string_lossy().to_string();
+    
+    let subtitle_path_escaped = subtitle_path.replace('\\', "\\\\").replace(':', "\\:").replace('\'', "\\'");
+    
+    let encoder = detect_best_encoder();
+    let vf = format!("subtitles='{}'", subtitle_path_escaped);
+    
+    let mut args = vec![
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", &input_str,
+        "-vf", &vf,
+        "-c:v", &encoder.video_codec,
+        "-c:a", "copy",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-threads", "4",
+        "-y", &output_str,
+    ];
+    args.extend(encoder.extra_args.iter().map(|s| s.as_str()));
+    
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    run_ffmpeg_fast(&args_ref)?;
+    
     Ok(())
 }
 
@@ -853,6 +895,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             let step_scan_id = format!("segment_{}_scan", i + 1);
             let step_process_id = format!("segment_{}_process", i + 1);
             let step_merge_id = format!("segment_{}_merge", i + 1);
+            let step_subtitle_id = format!("segment_{}_subtitle", i + 1);
             
             if let Ok(mut tasks) = tasks_clone.write() {
                 if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
@@ -864,12 +907,12 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
             
             // 步骤 1: 扫描视频文件
-            info!("  - 步骤 1/3: 扫描视频文件");
+            info!("  - 步骤 1/4: 扫描视频文件");
             if let Ok(mut tasks) = tasks_clone.write() {
                 if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                     task.progress_steps.push(TaskStep {
                         id: step_scan_id.clone(),
-                        name: "步骤 1/3: 扫描视频文件".to_string(),
+                        name: "步骤 1/4: 扫描视频文件".to_string(),
                         status: StepStatus::Running,
                         error: None,
                     });
@@ -916,12 +959,12 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
             
             // 步骤 2: 处理片段
-            info!("  - 步骤 2/3: 处理片段");
+            info!("  - 步骤 2/4: 处理片段");
             if let Ok(mut tasks) = tasks_clone.write() {
                 if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                     task.progress_steps.push(TaskStep {
                         id: step_process_id.clone(),
-                        name: "步骤 2/3: 处理片段".to_string(),
+                        name: "步骤 2/4: 处理片段".to_string(),
                         status: StepStatus::Running,
                         error: None,
                     });
@@ -934,6 +977,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 &config.video_ratio,
                 &config.audio_path,
                 config.audio_duration,
+                &config.subtitle_path,
                 &output_dir,
                 &format!("{}-{}.mp4", config.name, i + 1),
             );
@@ -948,10 +992,19 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                             }
                             task.progress_steps.push(TaskStep {
                                 id: step_merge_id.clone(),
-                                name: "步骤 3/3: 合成视频".to_string(),
+                                name: "步骤 3/4: 合成视频".to_string(),
                                 status: StepStatus::Completed,
                                 error: None,
                             });
+                            // 如果有字幕，添加字幕步骤
+                            if !config.subtitle_path.is_empty() {
+                                task.progress_steps.push(TaskStep {
+                                    id: step_subtitle_id.clone(),
+                                    name: "步骤 4/4: 添加字幕".to_string(),
+                                    status: StepStatus::Completed,
+                                    error: None,
+                                });
+                            }
                         }
                     }
                     
