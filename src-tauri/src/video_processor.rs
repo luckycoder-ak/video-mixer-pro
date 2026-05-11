@@ -258,15 +258,6 @@ fn run_ffmpeg_fast(args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn get_quality_blur_filter(target_width: u32, target_height: u32) -> String {
-    let blur_w = target_width / 4;
-    let blur_h = target_height / 4;
-    format!(
-        "scale={}:{}:force_original_aspect_ratio=increase,crop={}:{},boxblur=5:3,scale={}:{}:force_original_aspect_ratio=decrease,setsar=1",
-        blur_w, blur_h, target_width, target_height, target_width, target_height
-    )
-}
-
 fn process_single_mode_optimized(
     input: &PathBuf,
     output: &PathBuf,
@@ -333,10 +324,9 @@ fn process_dual_mode_optimized(
     let right_scaled_str = right_scaled.to_string_lossy().to_string();
     let duration_str = duration.to_string();
 
-    let blur_filter = get_quality_blur_filter(half_width, half_height);
     let vf_left = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,split[s0][s1];[s1]{}[b];[b][s0]overlay=0:0",
-        half_width, half_height, blur_filter
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
+        half_width, half_height, half_width, half_height
     );
 
     let left_handle = {
@@ -365,8 +355,8 @@ fn process_dual_mode_optimized(
     };
 
     let vf_right = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,split[s0][s1];[s1]{}[b];[b][s0]overlay=0:0",
-        half_width, half_height, blur_filter
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
+        half_width, half_height, half_width, half_height
     );
 
     let right_handle = {
@@ -399,8 +389,7 @@ fn process_dual_mode_optimized(
 
     let output_str = output.to_string_lossy().to_string();
     let filter_complex_str = format!(
-        "[0:v]scale={}:{}[left];[1:v]scale={}:{}[right];[left][right]hstack=inputs=2[stacked]",
-        half_width, half_height, half_width, half_height
+        "[0:v][1:v]hstack=inputs=2[stacked]"
     );
 
     let mut args: Vec<String> = vec![
