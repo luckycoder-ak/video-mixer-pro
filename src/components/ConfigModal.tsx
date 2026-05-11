@@ -430,8 +430,9 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           <input
             type="number"
             value={formData.template_duration}
-            onChange={(e) => handleTemplateDurationChange(parseInt(e.target.value) || 0)}
-            min="1"
+            onChange={(e) => handleTemplateDurationChange(parseFloat(e.target.value) || 0)}
+            min="0.1"
+            step="0.1"
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
@@ -541,8 +542,9 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                   <input
                     type="number"
                     value={segment.duration}
-                    onChange={(e) => handleSegmentChange(index, 'duration', parseInt(e.target.value) || 0)}
-                    min="1"
+                    onChange={(e) => handleSegmentChange(index, 'duration', parseFloat(e.target.value) || 0)}
+                    min="0.1"
+                    step="0.1"
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
                 </div>

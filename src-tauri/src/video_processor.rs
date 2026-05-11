@@ -171,8 +171,8 @@ pub fn process_segment(
     crop_mode: &super::config::CropMode,
     output_width: u32,
     output_height: u32,
-    duration: u32,
-    start_time: u32,
+    duration: f32,
+    start_time: f32,
     temp_dir: &PathBuf,
 ) -> Result<ProcessedSegment, String> {
     match crop_mode {
@@ -271,8 +271,8 @@ fn process_single_mode_optimized(
     output: &PathBuf,
     output_width: u32,
     output_height: u32,
-    duration: u32,
-    start_time: u32,
+    duration: f32,
+    start_time: f32,
 ) -> Result<(), String> {
     let input_str = input.to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
@@ -322,8 +322,8 @@ fn process_dual_mode_optimized(
     output: &PathBuf,
     output_width: u32,
     output_height: u32,
-    duration: u32,
-    start_time: u32,
+    duration: f32,
+    start_time: f32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
     info!("开始处理双视频模式片段:");
@@ -487,8 +487,8 @@ fn process_quadrant_mode_optimized(
     output: &PathBuf,
     output_width: u32,
     output_height: u32,
-    duration: u32,
-    start_time: u32,
+    duration: f32,
+    start_time: f32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
     info!("开始处理四宫格模式片段:");
@@ -677,7 +677,7 @@ fn process_single_mode(
     tutorial_folder: &str,
     video_ratio: &str,
     audio_path: &str,
-    _audio_duration: u32,
+    _audio_duration: f32,
     output_dir: &PathBuf,
     output_filename: &str,
 ) -> Result<(), String> {
@@ -686,7 +686,7 @@ fn process_single_mode(
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let mut start_time: u32 = 0;
+    let mut start_time: f32 = 0.0;
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;

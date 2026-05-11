@@ -10,7 +10,7 @@ pub struct TemplateSegment {
     pub segment_index: usize,
     pub source_folder: String,
     pub crop_mode: CropMode,
-    pub duration: u32,
+    pub duration: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -28,8 +28,8 @@ pub struct VideoConfig {
     pub root_folder: String,
     pub video_ratio: String,
     pub audio_path: String,
-    pub audio_duration: u32,
-    pub template_duration: u32,
+    pub audio_duration: f32,
+    pub template_duration: f32,
     pub segment_count: usize,
     pub template_segments: Vec<TemplateSegment>,
     pub tutorial_folder: String,
@@ -47,8 +47,8 @@ impl VideoConfig {
             root_folder: String::new(),
             video_ratio: "9:16".to_string(),
             audio_path: String::new(),
-            audio_duration: 0,
-            template_duration: 150,
+            audio_duration: 0.0,
+            template_duration: 150.0,
             segment_count: 3,
             template_segments: Vec::new(),
             tutorial_folder: String::new(),
@@ -67,13 +67,14 @@ impl VideoConfig {
             return Err("音频文件必须选择".to_string());
         }
 
-        let total_segment_duration: u32 = self
+        let total_segment_duration: f32 = self
             .template_segments
             .iter()
             .map(|s| s.duration)
             .sum();
 
-        if total_segment_duration != self.template_duration {
+        let diff = (total_segment_duration - self.template_duration).abs();
+        if diff > 0.1 {
             return Err(format!(
                 "片段时长之和不等于模板片段总时长: {} != {}",
                 total_segment_duration, self.template_duration
@@ -136,7 +137,7 @@ pub fn delete_config(state: tauri::State<AppState>, id: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub fn get_audio_duration(audio_path: String) -> Result<u32, String> {
+pub fn get_audio_duration(audio_path: String) -> Result<f32, String> {
     let output = std::process::Command::new("ffprobe")
         .args([
             "-v", "error",
@@ -153,7 +154,7 @@ pub fn get_audio_duration(audio_path: String) -> Result<u32, String> {
 
     let duration_str = String::from_utf8_lossy(&output.stdout);
     let duration_secs: f64 = duration_str.trim().parse().map_err(|_| "解析时长失败".to_string())?;
-    Ok(duration_secs as u32)
+    Ok(duration_secs as f32)
 }
 
 #[tauri::command]
