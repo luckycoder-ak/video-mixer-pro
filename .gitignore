@@ -1,38 +1,27 @@
+# Installers (too large to commit)
+installers/
+
 # Dependencies
 node_modules/
 
 # Build outputs
+src-tauri/target/
 dist/
 build/
 
-# Rust build outputs
-src-tauri/target/
-src-tauri/gen/
-
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
 
-# Environment files
+# Environment
 .env
 .env.local
-.env.*.local
-
-# Test coverage
-coverage/
-
-# Temporary files
-*.tmp
-*.temp
-*.bak

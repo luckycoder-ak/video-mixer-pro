@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use crate::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSegment {
@@ -83,13 +84,13 @@ impl VideoConfig {
 
 #[tauri::command]
 pub fn get_configs(state: tauri::State<AppState>) -> Result<Vec<VideoConfig>, String> {
-    let configs = state.configs.lock().map_err(|e| e.to_string())?;
+    let configs = state.configs.read().map_err(|e: std::sync::PoisonError<std::sync::RwLockReadGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
     Ok(configs.clone())
 }
 
 #[tauri::command]
 pub fn get_config(state: tauri::State<AppState>, id: String) -> Result<Option<VideoConfig>, String> {
-    let configs = state.configs.lock().map_err(|e| e.to_string())?;
+    let configs = state.configs.read().map_err(|e: std::sync::PoisonError<std::sync::RwLockReadGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
     Ok(configs.iter().find(|c| c.id == id).cloned())
 }
 
@@ -97,7 +98,7 @@ pub fn get_config(state: tauri::State<AppState>, id: String) -> Result<Option<Vi
 pub fn save_config(state: tauri::State<AppState>, config: VideoConfig) -> Result<VideoConfig, String> {
     config.validate()?;
 
-    let mut configs = state.configs.lock().map_err(|e| e.to_string())?;
+    let mut configs = state.configs.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
 
     if let Some(existing) = configs.iter().find(|c| c.id == config.id) {
         if existing.name != config.name {
@@ -122,7 +123,7 @@ pub fn save_config(state: tauri::State<AppState>, config: VideoConfig) -> Result
 
 #[tauri::command]
 pub fn delete_config(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    let mut configs = state.configs.lock().map_err(|e| e.to_string())?;
+    let mut configs = state.configs.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
     configs.retain(|c| c.id != id);
     Ok(())
 }

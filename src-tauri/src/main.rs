@@ -4,13 +4,13 @@ mod config;
 mod storage;
 mod video_processor;
 
-use log::{error, info};
-use std::sync::Mutex;
-use tauri::{Manager, State};
+use log::info;
+use std::sync::RwLock;
+use tauri::Manager;
 
 pub struct AppState {
-    pub configs: Mutex<Vec<config::Config>>,
-    pub tasks: Mutex<Vec<video_processor::Task>>,
+    pub configs: std::sync::RwLock<Vec<config::VideoConfig>>,
+    pub tasks: std::sync::RwLock<Vec<video_processor::Task>>,
 }
 
 fn main() {
@@ -23,8 +23,8 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            configs: Mutex::new(Vec::new()),
-            tasks: Mutex::new(Vec::new()),
+            configs: RwLock::new(Vec::new()),
+            tasks: RwLock::new(Vec::new()),
         })
         .setup(|app| {
             info!("Application setup complete");
