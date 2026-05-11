@@ -695,7 +695,6 @@ fn process_single_mode(
         if !tutorial_videos.is_empty() {
             if let Some(tutorial) = tutorial_videos.iter().next() {
                 let tutorial_scaled = temp_dir.join(format!("tutorial_{}.mp4", Uuid::new_v4()));
-                let tutorial_duration = 3;
                 
                 let input_str = tutorial.to_string_lossy().to_string();
                 let output_str = tutorial_scaled.to_string_lossy().to_string();
@@ -708,11 +707,9 @@ fn process_single_mode(
 
                 let args: Vec<&str> = vec![
                     "-hide_banner", "-loglevel", "error",
-                    "-ss", "0",
                     "-i", &input_str,
                     "-vf", &vf,
                     "-c:v", &encoder.video_codec,
-                    "-t", &tutorial_duration.to_string(),
                     "-an", "-y", &output_str,
                 ];
 
