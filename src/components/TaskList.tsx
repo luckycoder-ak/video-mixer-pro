@@ -396,8 +396,8 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                     'video_5': 5,
                     'finish': 99,
                   };
-                  const orderA = order[a.id] ?? parseInt(a.id.replace(/\D/g, '')) || 50;
-                  const orderB = order[b.id] ?? parseInt(b.id.replace(/\D/g, '')) || 50;
+                  const orderA = (order[a.id] ?? parseInt(a.id.replace(/\D/g, ''))) || 50;
+                  const orderB = (order[b.id] ?? parseInt(b.id.replace(/\D/g, ''))) || 50;
                   return orderA - orderB;
                 }).map((step) => (
                   <div

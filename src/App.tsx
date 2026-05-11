@@ -172,6 +172,7 @@ function App() {
               setGeneratingConfig(config);
               setShowGenerateModal(true);
             }}
+            onRefresh={refreshTasks}
           />
         ) : (
           <TaskList
