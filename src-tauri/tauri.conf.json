@@ -41,25 +41,10 @@
   },
   "plugins": {
     "fs": {
-      "scope": {
-        "allow": ["**"],
-        "deny": []
-      }
+      "requireLiteralLeadingDot": false
     },
     "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "ffmpeg",
-          "cmd": "ffmpeg",
-          "args": true
-        },
-        {
-          "name": "ffprobe",
-          "cmd": "ffprobe",
-          "args": true
-        }
-      ]
+      "open": true
     }
   }
 }
