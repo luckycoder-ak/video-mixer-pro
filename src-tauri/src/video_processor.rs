@@ -640,18 +640,6 @@ fn process_quadrant_mode_optimized(
 }
 
 #[cfg(target_os = "windows")]
-fn escape_subtitle_path(path: &str) -> String {
-    let escaped = path.replace('\\', "\\\\").replace(':', "\\\\:");
-    format!("'{}'", escaped)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn escape_subtitle_path(path: &str) -> String {
-    let escaped = path.replace("'", "'\\''");
-    format!("'{}'", escaped)
-}
-
-#[cfg(target_os = "windows")]
 fn to_ffmpeg_path(path: &PathBuf) -> String {
     let path_str = path.to_string_lossy();
     if path_str.starts_with("\\\\?\\") {
@@ -932,10 +920,10 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     let input_str = input_path.to_string_lossy().to_string();
     let output_str = output_path.to_string_lossy().to_string();
     
-    let subtitle_path_escaped = escape_subtitle_path(subtitle_path);
+    let subtitle_path_quoted = format!("'{}'", subtitle_path.replace("'", "'\\''"));
     
     let encoder = detect_best_encoder();
-    let vf = format!("subtitles={}", subtitle_path_escaped);
+    let vf = format!("subtitles=filename={}", subtitle_path_quoted);
     
     let mut args = vec![
         "-hide_banner",
