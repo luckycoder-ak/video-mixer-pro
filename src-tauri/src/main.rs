@@ -63,6 +63,7 @@ fn main() {
             storage::get_data_file_path,
             video_processor::create_task,
             video_processor::get_tasks,
+            video_processor::refresh_tasks_from_disk,
             video_processor::get_task_status,
             video_processor::pause_task,
             video_processor::resume_task,

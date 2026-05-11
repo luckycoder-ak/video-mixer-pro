@@ -1194,6 +1194,24 @@ pub fn get_task_status(state: tauri::State<AppState>, id: String) -> Result<Opti
 }
 
 #[tauri::command]
+pub fn refresh_tasks_from_disk(app: tauri::AppHandle, state: tauri::State<AppState>) -> Result<(), String> {
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let data_file = app_data_dir.join("app_data.json");
+    
+    if data_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(&data_file) {
+            if let Ok(data) = serde_json::from_str::<super::storage::AppData>(&content) {
+                if let Ok(mut tasks) = state.tasks.write() {
+                    *tasks = data.tasks;
+                }
+                info!("Refreshed {} tasks from disk", data.tasks.len());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn pause_task(state: tauri::State<AppState>, id: String) -> Result<(), String> {
     info!("暂停任务: id={}", id);
     let mut tasks = state.tasks.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<Task>>>| e.to_string())?;

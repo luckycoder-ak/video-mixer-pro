@@ -27,6 +27,7 @@ function App() {
 
   const loadData = async () => {
     try {
+      await invoke('refresh_tasks_from_disk');
       const data = await invoke<{ configs: VideoConfig[]; tasks: Task[] }>('load_data');
       const loadedConfigs = data.configs || [];
       const loadedTasks = data.tasks || [];
