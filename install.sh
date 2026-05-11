@@ -6,7 +6,6 @@
 
 set -e
 
-# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,7 +22,6 @@ echo -e "\n${CYAN}======================================================${NC}"
 echo -e "${CYAN}  VideoMixer Pro - 一键安装脚本${NC}"
 echo -e "${CYAN}======================================================${NC}\n"
 
-# 检测操作系统
 detect_os() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         echo "macOS"
@@ -43,7 +41,6 @@ detect_os() {
 OS=$(detect_os)
 info "检测到操作系统: $OS"
 
-# Homebrew (macOS)
 install_brew() {
     if ! command -v brew &> /dev/null; then
         info "正在安装 Homebrew..."
@@ -58,7 +55,6 @@ install_brew() {
     fi
 }
 
-# Node.js
 install_node() {
     if ! command -v node &> /dev/null; then
         info "正在安装 Node.js..."
@@ -72,7 +68,6 @@ install_node() {
     fi
 }
 
-# Rust
 install_rust() {
     if ! command -v rustc &> /dev/null; then
         info "正在安装 Rust..."
@@ -81,7 +76,6 @@ install_rust() {
     fi
 }
 
-# FFmpeg
 install_ffmpeg() {
     if ! command -v ffmpeg &> /dev/null; then
         info "正在安装 FFmpeg..."
@@ -94,24 +88,35 @@ install_ffmpeg() {
     fi
 }
 
-# 安装流程
+install_tauri_cli() {
+    if ! command -v tauri &> /dev/null; then
+        info "正在安装 Tauri CLI..."
+        npm install -g @tauri-apps/cli
+    fi
+}
+
 echo ""
-info "[1/4] 检查 Node.js..."
+info "[1/5] 检查 Node.js..."
 install_node
 success "Node.js - 已就绪"
 
 echo ""
-info "[2/4] 检查 Rust..."
+info "[2/5] 检查 Rust..."
 install_rust
 success "Rust - 已就绪"
 
 echo ""
-info "[3/4] 检查 FFmpeg..."
+info "[3/5] 检查 FFmpeg..."
 install_ffmpeg
 success "FFmpeg - 已就绪"
 
 echo ""
-info "[4/4] 安装 npm 依赖..."
+info "[4/5] 安装 Tauri CLI..."
+install_tauri_cli
+success "Tauri CLI - 已就绪"
+
+echo ""
+info "[5/5] 安装项目依赖..."
 npm install
 success "依赖安装 - 完成"
 
@@ -120,6 +125,6 @@ echo -e "${GREEN}  安装完成！${NC}"
 echo -e "${GREEN}======================================================${NC}\n"
 
 echo -e "${CYAN}[快速开始]${NC}"
-echo -e "  开发模式:  npm run dev"
-echo -e "  完整构建:  npm run build:all"
-echo -e "  一键构建:  bash scripts/build.sh\n"
+echo -e "  启动桌面应用:  bash run.sh"
+echo -e "  开发模式:      npm run tauri dev"
+echo -e "  完整构建:      npm run build:all\n"
