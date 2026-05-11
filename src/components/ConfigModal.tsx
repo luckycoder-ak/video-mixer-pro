@@ -581,9 +581,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
               </span>
             </div>
           </div>
-          <p className="text-xs text-gray-400 mt-2">
-            说明：教程素材用于在模板片段之间插入过渡内容，相同片段不会重复使用
-          </p>
       </div>
     </div>
   );
