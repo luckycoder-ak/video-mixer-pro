@@ -814,11 +814,12 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         };
         
-        let output_dir = if !config.output_folder.is_empty() {
+        let output_base_dir = if !config.output_folder.is_empty() {
             PathBuf::from(&config.output_folder)
         } else {
-            dirs::download_dir().unwrap_or_else(|| std::env::current_dir().unwrap()).join("VideoMixerOutput").join(&task_id)
+            dirs::download_dir().unwrap_or_else(|| std::env::current_dir().unwrap())
         };
+        let output_dir = output_base_dir.join(&task_id);
         if let Err(e) = fs::create_dir_all(&output_dir) {
             error!("创建输出目录失败: {}", e);
             return;
