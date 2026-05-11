@@ -11,6 +11,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const [hoveredTask, setHoveredTask] = useState<Task | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
+  const [hoverTimeout, setHoverTimeout] = useState<number | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -19,6 +20,14 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
 
     return () => clearInterval(interval);
   }, [onRefresh]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+      }
+    };
+  }, [hoverTimeout]);
 
   const handlePauseTask = async (task: Task) => {
     try {
@@ -155,12 +164,22 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const handleMouseEnter = (e: React.MouseEvent, task: Task) => {
     if (task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error') {
       const rect = e.currentTarget.getBoundingClientRect();
-      setHoverPosition({ x: rect.right + 10, y: rect.top });
-      setHoveredTask(task);
+      const newPosition = { x: rect.left + 10, y: rect.top };
+      
+      const timeout = window.setTimeout(() => {
+        setHoverPosition(newPosition);
+        setHoveredTask(task);
+      }, 100);
+      
+      setHoverTimeout(timeout);
     }
   };
 
   const handleMouseLeave = () => {
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      setHoverTimeout(null);
+    }
     setHoveredTask(null);
     setHoverPosition(null);
   };
