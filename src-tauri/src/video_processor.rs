@@ -335,8 +335,8 @@ fn process_dual_mode_optimized(
     let start_time_str = start_time.to_string();
 
     let vf_bg = format!(
-        "scale={}:{}:force_original_aspect_ratio=increase,gblur=sigma=15,pad={}:{}:(ow-iw)/2:(oh-ih)/2",
-        output_width * 2, output_height * 2, output_width, output_height
+        "scale=iw*2:ih*2:gblur=sigma=15,scale={}:{},pad={}:{}:0:0",
+        output_width, output_height, output_width, output_height
     );
 
     let half_height = output_height * 3 / 4;

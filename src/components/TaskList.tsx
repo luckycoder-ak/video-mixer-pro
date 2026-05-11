@@ -219,7 +219,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             <p className="text-sm text-gray-400">在配置列表中点击"生成"按钮创建任务</p>
           </div>
         ) : (
-          tasks.map((task, index) => (
+          [...tasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((task, index) => (
             <div
               key={task.id}
               className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group"
