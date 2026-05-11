@@ -155,6 +155,21 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     });
   };
 
+  const getStepOrder = (id: string): number => {
+    const orderMap: Record<string, number> = {
+      'init': 0,
+      'video_1': 1,
+      'video_2': 2,
+      'video_3': 3,
+      'video_4': 4,
+      'video_5': 5,
+      'finish': 99,
+    };
+    if (orderMap[id] !== undefined) return orderMap[id];
+    const num = parseInt(id.replace(/\D/g, ''), 10);
+    return isNaN(num) ? 50 : num;
+  };
+
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
     e.preventDefault();
     setContextMenu({ x: e.pageX, y: e.pageY, task });
@@ -210,7 +225,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        {/* Header */}
         <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-1">序号</div>
           <div className="col-span-3">任务名称</div>
@@ -220,7 +234,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
           <div className="col-span-2">操作</div>
         </div>
 
-        {/* Body */}
         {tasks.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
             <div className="text-6xl mb-4 opacity-50">📋</div>
@@ -292,7 +305,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
         )}
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <>
           <div
@@ -341,13 +353,11 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
         </>
       )}
 
-      {/* Progress Hover Popup */}
       {hoveredTask && hoverPosition && (
         <div
           className="fixed z-50 bg-white rounded-xl shadow-2xl w-80 max-h-[60vh] overflow-hidden animate-fadeIn"
           style={{ left: hoverPosition.x, top: hoverPosition.y }}
         >
-          {/* Header */}
           <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3">
             <h3 className="text-white text-sm font-semibold flex items-center gap-2">
               <span>📊</span>
@@ -356,7 +366,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             <p className="text-gray-400 text-xs mt-1 truncate">{hoveredTask.task_name}</p>
           </div>
 
-          {/* Progress Bar */}
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-600 text-xs">进度</span>
@@ -377,7 +386,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             )}
           </div>
 
-          {/* Steps Checklist */}
           <div className="p-3 overflow-y-auto max-h-[30vh]">
             <h4 className="text-gray-800 font-semibold text-xs mb-3 flex items-center gap-1">
               <span>✅</span>
@@ -386,20 +394,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             
             {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
               <div className="space-y-2">
-                {[...hoveredTask.progress_steps].sort((a, b) => {
-                  const order: Record<string, number> = {
-                    'init': 0,
-                    'video_1': 1,
-                    'video_2': 2,
-                    'video_3': 3,
-                    'video_4': 4,
-                    'video_5': 5,
-                    'finish': 99,
-                  };
-                  const orderA = (order[a.id] ?? parseInt(a.id.replace(/\D/g, ''))) || 50;
-                  const orderB = (order[b.id] ?? parseInt(b.id.replace(/\D/g, ''))) || 50;
-                  return orderA - orderB;
-                }).map((step) => (
+                {[...hoveredTask.progress_steps].sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id)).map((step) => (
                   <div
                     key={step.id}
                     className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${getStepStatusColor(step.status)}`}
