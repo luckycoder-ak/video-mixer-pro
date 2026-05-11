@@ -76,6 +76,20 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
     }
   };
 
+  const handleDeleteConfig = async (config: VideoConfig) => {
+    if (!confirm(`确定要删除配置 "${config.name}" 吗？`)) {
+      return;
+    }
+    try {
+      await invoke('delete_config', { id: config.id });
+      onRefresh();
+      alert('配置已删除');
+    } catch (error) {
+      console.error('删除配置失败:', error);
+      alert('删除配置失败');
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
@@ -179,6 +193,13 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
                   className="px-3 py-1.5 text-sm bg-gradient-to-r from-secondary to-secondary-dark text-white rounded-lg hover:shadow-md transition-all"
                 >
                   生成
+                </button>
+                <button
+                  onClick={() => handleDeleteConfig(config)}
+                  className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  title="删除配置"
+                >
+                  🗑️
                 </button>
               </div>
             </div>

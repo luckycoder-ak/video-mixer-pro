@@ -50,16 +50,32 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   };
 
   const handleDeleteTask = async (task: Task) => {
-    if (!confirm('确定要删除这个任务吗？')) {
-      setContextMenu(null);
-      return;
+    const hasOutput = task.output_folder && task.output_folder.trim() !== '';
+    
+    let deleteVideos = false;
+    if (hasOutput && task.status === 'completed') {
+      const result = confirm(`确定要删除任务 "${task.task_name}" 吗？\n\n是否同时删除已生成的视频文件夹？`);
+      if (result) {
+        deleteVideos = confirm('确定要删除已生成的视频文件吗？此操作不可恢复！');
+      } else {
+        setContextMenu(null);
+        return;
+      }
+    } else {
+      if (!confirm(`确定要删除任务 "${task.task_name}" 吗？`)) {
+        setContextMenu(null);
+        return;
+      }
     }
+    
     try {
-      await invoke('delete_task', { id: task.id });
+      await invoke('delete_task', { id: task.id, delete_videos: deleteVideos });
       setContextMenu(null);
       onRefresh();
+      alert('任务已删除');
     } catch (error) {
       console.error('删除任务失败:', error);
+      alert('删除任务失败');
     }
   };
 

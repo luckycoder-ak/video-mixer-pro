@@ -1024,9 +1024,24 @@ pub fn resume_task(state: tauri::State<AppState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn delete_task(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    info!("删除任务: id={}", id);
+pub fn delete_task(state: tauri::State<AppState>, id: String, delete_videos: bool) -> Result<(), String> {
+    info!("删除任务: id={}, delete_videos={}", id, delete_videos);
+    
     let mut tasks = state.tasks.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<Task>>>| e.to_string())?;
+    
+    if let Some(task) = tasks.iter().find(|t| t.id == id) {
+        if delete_videos && !task.output_folder.is_empty() {
+            let output_path = std::path::PathBuf::from(&task.output_folder);
+            if output_path.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&output_path) {
+                    info!("删除输出文件夹失败: {}", e);
+                } else {
+                    info!("已删除输出文件夹: {}", task.output_folder);
+                }
+            }
+        }
+    }
+    
     tasks.retain(|t| t.id != id);
     info!("任务已删除: id={}", id);
     Ok(())
