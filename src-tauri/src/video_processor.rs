@@ -172,23 +172,24 @@ pub fn process_segment(
     output_width: u32,
     output_height: u32,
     duration: u32,
+    start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<ProcessedSegment, String> {
     match crop_mode {
         super::config::CropMode::Single => {
             let video = &videos[0];
             let output = temp_dir.join(format!("segment_{}.mp4", Uuid::new_v4()));
-            process_single_mode_optimized(video, &output, output_width, output_height, duration)?;
+            process_single_mode_optimized(video, &output, output_width, output_height, duration, start_time)?;
             Ok(ProcessedSegment { output_path: output, duration: duration as f64 })
         }
         super::config::CropMode::Dual => {
             let output = temp_dir.join(format!("segment_{}.mp4", Uuid::new_v4()));
-            process_dual_mode_optimized(&videos[0], &videos[1], &output, output_width, output_height, duration, temp_dir)?;
+            process_dual_mode_optimized(&videos[0], &videos[1], &output, output_width, output_height, duration, start_time, temp_dir)?;
             Ok(ProcessedSegment { output_path: output, duration: duration as f64 })
         }
         super::config::CropMode::Quadrant => {
             let output = temp_dir.join(format!("segment_{}.mp4", Uuid::new_v4()));
-            process_quadrant_mode_optimized(&videos[0], &videos[1], &videos[2], &videos[3], &output, output_width, output_height, duration, temp_dir)?;
+            process_quadrant_mode_optimized(&videos[0], &videos[1], &videos[2], &videos[3], &output, output_width, output_height, duration, start_time, temp_dir)?;
             Ok(ProcessedSegment { output_path: output, duration: duration as f64 })
         }
     }
@@ -269,6 +270,7 @@ fn process_single_mode_optimized(
     output_width: u32,
     output_height: u32,
     duration: u32,
+    start_time: u32,
 ) -> Result<(), String> {
     let input_str = input.to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
@@ -278,11 +280,13 @@ fn process_single_mode_optimized(
         output_width, output_height, output_width, output_height
     );
     let duration_str = duration.to_string();
+    let start_time_str = start_time.to_string();
     let video_codec = encoder.video_codec.clone();
 
     let mut args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
+        "-ss".to_string(), start_time_str,
         "-i".to_string(), input_str,
         "-vf".to_string(), vf_str,
         "-c:v".to_string(), video_codec,
@@ -310,6 +314,7 @@ fn process_dual_mode_optimized(
     output_width: u32,
     output_height: u32,
     duration: u32,
+    start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
     let half_width = output_width / 2;
@@ -326,6 +331,7 @@ fn process_dual_mode_optimized(
     let left_scaled_str = left_scaled.to_string_lossy().to_string();
     let right_scaled_str = right_scaled.to_string_lossy().to_string();
     let duration_str = duration.to_string();
+    let start_time_str = start_time.to_string();
 
     let vf_left = format!(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
@@ -336,12 +342,14 @@ fn process_dual_mode_optimized(
         let left_str = left_str.clone();
         let left_scaled_str = left_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_left = vf_left.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), left_str,
                 "-vf".to_string(), vf_left,
                 "-c:v".to_string(), video_codec,
@@ -365,12 +373,14 @@ fn process_dual_mode_optimized(
         let right_str = right_str.clone();
         let right_scaled_str = right_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_right = vf_right.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), right_str,
                 "-vf".to_string(), vf_right,
                 "-c:v".to_string(), video_codec,
@@ -427,6 +437,7 @@ fn process_quadrant_mode_optimized(
     output_width: u32,
     output_height: u32,
     duration: u32,
+    start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
     let quad_width = output_width / 2;
@@ -450,6 +461,7 @@ fn process_quadrant_mode_optimized(
     let bl_scaled_str = bl_scaled.to_string_lossy().to_string();
     let br_scaled_str = br_scaled.to_string_lossy().to_string();
     let duration_str = duration.to_string();
+    let start_time_str = start_time.to_string();
 
     let vf_base = format!(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
@@ -460,12 +472,14 @@ fn process_quadrant_mode_optimized(
         let tl_str = tl_str.clone();
         let tl_scaled_str = tl_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), tl_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
@@ -484,12 +498,14 @@ fn process_quadrant_mode_optimized(
         let tr_str = tr_str.clone();
         let tr_scaled_str = tr_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), tr_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
@@ -508,12 +524,14 @@ fn process_quadrant_mode_optimized(
         let bl_str = bl_str.clone();
         let bl_scaled_str = bl_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), bl_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
@@ -532,12 +550,14 @@ fn process_quadrant_mode_optimized(
         let br_str = br_str.clone();
         let br_scaled_str = br_scaled_str.clone();
         let duration_str = duration_str.clone();
+        let start_time_str = start_time_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
                 "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+                "-ss".to_string(), start_time_str,
                 "-i".to_string(), br_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
@@ -603,6 +623,7 @@ fn process_single_mode(
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
+    let mut start_time: u32 = 0;
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;
@@ -627,10 +648,12 @@ fn process_single_mode(
             output_width,
             output_height,
             segment.duration,
+            start_time,
             &temp_dir,
         )?;
 
         segment_files.push(processed.output_path);
+        start_time += segment.duration;
     }
 
     let concat_file = temp_dir.join("concat.txt");
