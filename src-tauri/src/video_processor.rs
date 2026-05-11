@@ -203,10 +203,12 @@ struct EncoderConfig {
 }
 
 fn detect_best_encoder() -> EncoderConfig {
+    info!("正在检测可用的视频编码器...");
+    
     let encoders = vec![
-        ("h264_nvenc", "NVIDIA NVENC"),
-        ("h264_qsv", "Intel Quick Sync"),
-        ("h264_amf", "AMD AMF"),
+        ("h264_nvenc", "NVIDIA NVENC (GPU加速)"),
+        ("h264_qsv", "Intel Quick Sync (GPU加速)"),
+        ("h264_amf", "AMD AMF (GPU加速)"),
     ];
 
     for (codec, name) in encoders {
@@ -220,7 +222,7 @@ fn detect_best_encoder() -> EncoderConfig {
             let combined = format!("{}\n{}", stdout, stderr);
 
             if combined.contains(codec) {
-                info!("检测到硬件编码器: {}", name);
+                info!("检测到硬件编码器: {}，使用该编码器加速视频处理", name);
                 return match codec {
                     "h264_nvenc" => EncoderConfig {
                         video_codec: "h264_nvenc".to_string(),
@@ -243,7 +245,7 @@ fn detect_best_encoder() -> EncoderConfig {
         }
     }
 
-    info!("使用软件编码器: libx264");
+    info!("未检测到硬件编码器，使用软件编码器: libx264 (速度较慢，但兼容性好)");
     EncoderConfig {
         video_codec: "libx264".to_string(),
         audio_codec: "aac".to_string(),
@@ -283,6 +285,12 @@ fn process_single_mode_optimized(
     let start_time_str = start_time.to_string();
     let video_codec = encoder.video_codec.clone();
 
+    info!("开始处理单视频片段:");
+    info!("  源视频: {}", input.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出视频: {}", output.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出尺寸: {}x{}", output_width, output_height);
+    info!("  截取时长: {}秒，开始时间: {}秒", duration, start_time);
+
     let mut args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
@@ -318,6 +326,16 @@ fn process_dual_mode_optimized(
     start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
+    info!("开始处理双视频模式片段:");
+    info!("  背景视频: {}", bg.file_name().unwrap_or_default().to_string_lossy());
+    info!("  左侧视频: {}", left.file_name().unwrap_or_default().to_string_lossy());
+    info!("  右侧视频: {}", right.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出视频: {}", output.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出尺寸: {}x{}", output_width, output_height);
+    info!("  截取时长: {}秒，开始时间: {}秒", duration, start_time);
+    info!("  临时目录: {}", temp_dir.to_string_lossy());
+    info!("  开始并行处理背景和左右视频...");
+    
     let encoder = detect_best_encoder();
     let encoder_video_codec = encoder.video_codec.clone();
 
@@ -473,6 +491,17 @@ fn process_quadrant_mode_optimized(
     start_time: u32,
     temp_dir: &PathBuf,
 ) -> Result<(), String> {
+    info!("开始处理四宫格模式片段:");
+    info!("  左上视频: {}", tl.file_name().unwrap_or_default().to_string_lossy());
+    info!("  右上视频: {}", tr.file_name().unwrap_or_default().to_string_lossy());
+    info!("  左下视频: {}", bl.file_name().unwrap_or_default().to_string_lossy());
+    info!("  右下视频: {}", br.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出视频: {}", output.file_name().unwrap_or_default().to_string_lossy());
+    info!("  输出尺寸: {}x{}", output_width, output_height);
+    info!("  截取时长: {}秒，开始时间: {}秒", duration, start_time);
+    info!("  临时目录: {}", temp_dir.to_string_lossy());
+    info!("  开始并行处理四个视频...");
+    
     let quad_width = output_width / 2;
     let quad_height = output_height / 2;
     let encoder = detect_best_encoder();
@@ -850,12 +879,14 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         }
         
         for i in 0..count {
-            info!("处理第 {}/{} 个视频", i + 1, count);
+            info!("============================================");
+            info!("开始处理第 {}/{} 个视频", i + 1, count);
+            info!("============================================");
             
             let steps = vec![
-                (format!("segment_{}_scan", i + 1), "扫描视频文件"),
-                (format!("segment_{}_process", i + 1), "处理片段"),
-                (format!("segment_{}_merge", i + 1), "合成视频"),
+                (format!("segment_{}_scan", i + 1), "步骤 1/3: 扫描视频文件"),
+                (format!("segment_{}_process", i + 1), "步骤 2/3: 处理片段"),
+                (format!("segment_{}_merge", i + 1), "步骤 3/3: 合成视频"),
             ];
             
             if let Ok(mut tasks) = tasks_clone.write() {
@@ -903,7 +934,8 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             
             match result {
                 Ok(_) => {
-                    info!("第 {} 个视频处理成功", i + 1);
+                    info!("✅ 第 {} 个视频处理成功！", i + 1);
+                    info!("   已保存到: {}", output_dir.display());
                     if let Ok(mut tasks) = tasks_clone.write() {
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.completed_count += 1;
@@ -919,7 +951,8 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     }
                 }
                 Err(e) => {
-                    error!("第 {} 个视频处理失败: {}", i + 1, e);
+                    error!("❌ 第 {} 个视频处理失败: {}", i + 1, e);
+                    error!("   详细错误信息: {}", e);
                     if let Ok(mut tasks) = tasks_clone.write() {
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.status = TaskStatus::Error;
@@ -942,7 +975,13 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == "finish") {
                     step.status = StepStatus::Completed;
                 }
-                info!("任务完成: id={}", task_id);
+                info!("============================================");
+                info!("🎉 任务全部完成！");
+                info!("============================================");
+                info!("任务ID: {}", task_id);
+                info!("生成视频数: {}", count);
+                info!("输出目录: {}", output_dir.display());
+                info!("============================================");
             }
         }
     });

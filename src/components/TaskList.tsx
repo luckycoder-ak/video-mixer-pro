@@ -155,6 +155,23 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     });
   };
 
+  const calculateExecutionTime = (task: Task): { totalSeconds: number; averageSeconds: number } => {
+    if (!task.started_at) {
+      return { totalSeconds: 0, averageSeconds: 0 };
+    }
+
+    const startTime = new Date(task.started_at);
+    const endTime = task.completed_at ? new Date(task.completed_at) : new Date();
+
+    const totalMs = endTime.getTime() - startTime.getTime();
+    const totalSeconds = Math.round(totalMs / 1000);
+
+    const completedCount = task.completed_count || 0;
+    const averageSeconds = completedCount > 0 ? Math.round(totalSeconds / completedCount) : 0;
+
+    return { totalSeconds, averageSeconds };
+  };
+
   const getStepOrder = (id: string): number => {
     const orderMap: Record<string, number> = {
       'init': 0,
@@ -240,12 +257,13 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="grid grid-cols-14 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-1">序号</div>
           <div className="col-span-3">任务名称</div>
           <div className="col-span-2">创建时间</div>
           <div className="col-span-2">状态</div>
           <div className="col-span-2">进度</div>
+          <div className="col-span-2">耗时 (秒)</div>
           <div className="col-span-2">操作</div>
         </div>
 
@@ -256,41 +274,55 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             <p className="text-sm text-gray-400">在配置列表中点击"生成"按钮创建任务</p>
           </div>
         ) : (
-          [...tasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((task, index) => (
-            <div
-              key={task.id}
-              className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group"
-              onContextMenu={(e) => handleContextMenu(e, task)}
-              onMouseEnter={(e) => handleMouseEnter(e, task)}
-              onMouseLeave={handleMouseLeave}
-            >
-              <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
-              <div className="col-span-3">
-                <div className="flex items-center gap-2">
-                  <span>📁</span>
-                  <span className="font-semibold text-gray-800">{task.task_name}</span>
-                </div>
-              </div>
-              <div className="col-span-2 text-gray-500 text-sm flex items-center gap-1">
-                <span>🕐</span>
-                <span>{formatDate(task.created_at)}</span>
-              </div>
-              <div className="col-span-2">{getStatusBadge(task.status)}</div>
-              <div className="col-span-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold font-mono text-gray-700">
-                    {task.completed_count}/{task.total_count}
-                  </span>
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
-                      style={{ width: `${(task.completed_count / task.total_count) * 100}%` }}
-                    />
+          [...tasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((task, index) => {
+            const { totalSeconds, averageSeconds } = calculateExecutionTime(task);
+            return (
+              <div
+                key={task.id}
+                className="grid grid-cols-14 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group"
+                onContextMenu={(e) => handleContextMenu(e, task)}
+                onMouseEnter={(e) => handleMouseEnter(e, task)}
+                onMouseLeave={handleMouseLeave}
+              >
+                <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
+                <div className="col-span-3">
+                  <div className="flex items-center gap-2">
+                    <span>📁</span>
+                    <span className="font-semibold text-gray-800">{task.task_name}</span>
                   </div>
                 </div>
-              </div>
-              <div className="col-span-2">
-                <div className="flex gap-2">
+                <div className="col-span-2 text-gray-500 text-sm flex items-center gap-1">
+                  <span>🕐</span>
+                  <span>{formatDate(task.created_at)}</span>
+                </div>
+                <div className="col-span-2">{getStatusBadge(task.status)}</div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold font-mono text-gray-700">
+                      {task.completed_count}/{task.total_count}
+                    </span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
+                        style={{ width: `${(task.completed_count / task.total_count) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-gray-500">
+                      总耗时: {totalSeconds}s
+                    </span>
+                    {averageSeconds > 0 && (
+                      <span className="text-xs text-gray-500">
+                        平均: {averageSeconds}s/个
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex gap-2">
                   {task.status === 'completed' ? (
                     <button
                       onClick={() => handleOpenFolder(task)}
@@ -313,10 +345,11 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                       暂停
                     </button>
                   ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
