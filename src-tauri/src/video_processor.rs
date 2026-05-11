@@ -350,13 +350,13 @@ fn process_dual_mode_optimized(
     let half_height = output_height * 3 / 4;
     let half_width = output_width / 2;
     
-    // 左右视频缩放，使用白色背景填充
+    // 左右视频缩放，使用柔和浅灰色背景填充
     let vf_left = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=white",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=0xF0F0F0",
         half_width, half_height, half_width, half_height
     );
     let vf_right = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=white",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=0xF0F0F0",
         half_width, half_height, half_width, half_height
     );
 
@@ -416,9 +416,9 @@ fn process_dual_mode_optimized(
 
     let output_str = output.to_string_lossy().to_string();
     
-    // 使用 filter_complex 创建白色背景并合成左右视频
+    // 使用 filter_complex 创建柔和浅灰色背景并合成左右视频
     let filter_complex_str = format!(
-        "color=c=white:s={}x{}:d={}[bg];[bg][0:v]overlay=0:{}[bg_left];[bg_left][1:v]overlay={}:{}[final]",
+        "color=c=0xF0F0F0:s={}x{}:d={}[bg];[bg][0:v]overlay=0:{}[bg_left];[bg_left][1:v]overlay={}:{}[final]",
         output_width, output_height, duration, left_y, half_width, right_y
     );
 
@@ -792,7 +792,7 @@ fn process_single_mode(
                 let encoder = detect_best_encoder();
 
                 let vf = format!(
-                    "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:white@0.5",
+                    "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:color=0xF0F0F0",
                     output_width, output_height, output_width, output_height
                 );
 
