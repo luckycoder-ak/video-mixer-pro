@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Task } from '../types';
+import { Task, TaskStep } from '../types';
 
 interface Props {
   tasks: Task[];
@@ -8,6 +8,7 @@ interface Props {
 
 export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
+  const [progressModal, setProgressModal] = useState<Task | null>(null);
 
   const getStatusBadge = (status: Task['status']) => {
     switch (status) {
@@ -49,6 +50,32 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     }
   };
 
+  const getStepIcon = (status: TaskStep['status']) => {
+    switch (status) {
+      case 'running':
+        return <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold animate-pulse">▶</span>;
+      case 'completed':
+        return <span className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center text-xs font-bold">✓</span>;
+      case 'error':
+        return <span className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs font-bold">✕</span>;
+      default:
+        return <span className="w-5 h-5 rounded-full bg-gray-300 text-gray-500 flex items-center justify-center text-xs font-bold">○</span>;
+    }
+  };
+
+  const getStepStatusColor = (status: TaskStep['status']) => {
+    switch (status) {
+      case 'running':
+        return 'bg-blue-100 border-blue-300';
+      case 'completed':
+        return 'bg-green-50 border-green-200';
+      case 'error':
+        return 'bg-red-50 border-red-200';
+      default:
+        return 'bg-gray-50 border-gray-200';
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString('zh-CN', {
@@ -64,6 +91,11 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
     e.preventDefault();
     setContextMenu({ x: e.pageX, y: e.pageY, task });
+  };
+
+  const handleViewProgress = (task: Task) => {
+    setProgressModal(task);
+    setContextMenu(null);
   };
 
   return (
@@ -133,19 +165,29 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                 </div>
               </div>
               <div className="col-span-2">
-                {task.status === 'completed' ? (
-                  <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-                    打开文件夹
-                  </button>
-                ) : task.status === 'paused' ? (
-                  <button className="px-3 py-1.5 text-sm bg-gradient-to-r from-secondary to-secondary-dark text-white rounded-lg hover:shadow-md transition-all">
-                    继续
-                  </button>
-                ) : (
-                  <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-                    暂停
-                  </button>
-                )}
+                <div className="flex gap-2">
+                  {task.status === 'running' && (
+                    <button
+                      onClick={() => handleViewProgress(task)}
+                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-primary to-primary-dark text-white rounded-lg hover:shadow-md transition-all"
+                    >
+                      查看进度
+                    </button>
+                  )}
+                  {task.status === 'completed' ? (
+                    <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                      打开文件夹
+                    </button>
+                  ) : task.status === 'paused' ? (
+                    <button className="px-3 py-1.5 text-sm bg-gradient-to-r from-secondary to-secondary-dark text-white rounded-lg hover:shadow-md transition-all">
+                      继续
+                    </button>
+                  ) : task.status !== 'running' ? (
+                    <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                      暂停
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))
@@ -163,9 +205,12 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             className="fixed z-50 bg-white rounded-lg shadow-lg py-2 min-w-[160px] border border-gray-200"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
-            <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+            <button 
+              onClick={() => handleViewProgress(contextMenu.task)}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
               <span>👁️</span>
-              <span>查看详情</span>
+              <span>查看进度</span>
             </button>
             {contextMenu.task.status === 'paused' && (
               <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
@@ -189,6 +234,111 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               <span>🗑️</span>
               <span>删除任务</span>
             </button>
+          </div>
+        </>
+      )}
+
+      {/* Progress Modal */}
+      {progressModal && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4"
+            onClick={() => setProgressModal(null)}
+          />
+          <div
+            className="fixed z-50 bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-white text-lg font-semibold flex items-center gap-2">
+                  <span>📊</span>
+                  <span>任务进度</span>
+                </h3>
+                <p className="text-gray-400 text-sm mt-1">{progressModal.task_name}</p>
+              </div>
+              <button
+                onClick={() => setProgressModal(null)}
+                className="text-gray-400 hover:text-white text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-600 text-sm">整体进度</span>
+                <span className="font-semibold text-gray-800">
+                  {progressModal.completed_count}/{progressModal.total_count} 视频
+                </span>
+              </div>
+              <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all duration-300"
+                  style={{ width: `${(progressModal.completed_count / progressModal.total_count) * 100}%` }}
+                />
+              </div>
+              {progressModal.current_video > 0 && (
+                <p className="text-gray-500 text-sm mt-3">
+                  当前处理: 第 {progressModal.current_video} 个视频
+                </p>
+              )}
+            </div>
+
+            {/* Steps Checklist */}
+            <div className="p-6 overflow-y-auto max-h-[50vh]">
+              <h4 className="text-gray-800 font-semibold mb-4 flex items-center gap-2">
+                <span>✅</span>
+                <span>步骤清单</span>
+              </h4>
+              
+              {progressModal.progress_steps && progressModal.progress_steps.length > 0 ? (
+                <div className="space-y-3">
+                  {progressModal.progress_steps.map((step, index) => (
+                    <div
+                      key={step.id}
+                      className={`flex items-start gap-3 p-3 rounded-lg border ${getStepStatusColor(step.status)}`}
+                    >
+                      <div className="mt-0.5">{getStepIcon(step.status)}</div>
+                      <div className="flex-1">
+                        <p className={`font-medium ${
+                          step.status === 'completed' ? 'text-green-700' :
+                          step.status === 'running' ? 'text-blue-700' :
+                          step.status === 'error' ? 'text-red-700' : 'text-gray-600'
+                        }`}>
+                          {step.name}
+                        </p>
+                        {step.error && (
+                          <p className="text-red-500 text-sm mt-1">
+                            错误: {step.error}
+                          </p>
+                        )}
+                      </div>
+                      {step.status === 'running' && (
+                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-bounce" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 py-8">
+                  <div className="text-4xl mb-2">⏳</div>
+                  <p>正在初始化任务...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setProgressModal(null)}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </>
       )}

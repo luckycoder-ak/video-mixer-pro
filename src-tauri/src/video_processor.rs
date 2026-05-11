@@ -22,6 +22,24 @@ pub enum TaskStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskStep {
+    pub id: String,
+    pub name: String,
+    #[serde(rename_all = "lowercase")]
+    pub status: StepStatus,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum StepStatus {
+    Pending,
+    Running,
+    Completed,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub config_id: String,
@@ -35,6 +53,8 @@ pub struct Task {
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
+    pub current_video: usize,
+    pub progress_steps: Vec<TaskStep>,
 }
 
 impl Task {
@@ -52,6 +72,8 @@ impl Task {
             started_at: None,
             completed_at: None,
             error_message: None,
+            current_video: 0,
+            progress_steps: Vec::new(),
         }
     }
 }
@@ -619,16 +641,71 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         };
         
+        let num_segments = config.template_segments.len();
+        
         if let Ok(mut tasks) = state_clone.tasks.write() {
             if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = TaskStatus::Running;
                 task.started_at = Some(Utc::now());
+                task.current_video = 1;
+                task.progress_steps = vec![
+                    TaskStep { id: "init".to_string(), name: "初始化".to_string(), status: StepStatus::Completed, error: None },
+                    TaskStep { id: "video_1".to_string(), name: format!("处理视频 1/{}", count), status: StepStatus::Running, error: None },
+                ];
+                for i in 2..=count {
+                    task.progress_steps.push(TaskStep { 
+                        id: format!("video_{}", i), 
+                        name: format!("处理视频 {}/{}", i, count), 
+                        status: StepStatus::Pending, 
+                        error: None 
+                    });
+                }
+                task.progress_steps.push(TaskStep { id: "finish".to_string(), name: "完成".to_string(), status: StepStatus::Pending, error: None });
                 info!("任务开始运行: id={}", task_id);
             }
         }
         
         for i in 0..count {
             info!("处理第 {}/{} 个视频", i + 1, count);
+            
+            let steps = vec![
+                (format!("segment_{}_scan", i + 1), "扫描视频文件"),
+                (format!("segment_{}_process", i + 1), "处理片段"),
+                (format!("segment_{}_merge", i + 1), "合成视频"),
+            ];
+            
+            if let Ok(mut tasks) = state_clone.tasks.write() {
+                if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                    task.current_video = i + 1;
+                    if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 1)) {
+                        step.status = StepStatus::Running;
+                    }
+                }
+            }
+            
+            for (step_id, step_name) in &steps {
+                info!("  - {}", step_name);
+                if let Ok(mut tasks) = state_clone.tasks.write() {
+                    if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                        task.progress_steps.push(TaskStep {
+                            id: step_id.clone(),
+                            name: step_name.clone(),
+                            status: StepStatus::Running,
+                            error: None,
+                        });
+                    }
+                }
+                
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                
+                if let Ok(mut tasks) = state_clone.tasks.write() {
+                    if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                        if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == *step_id) {
+                            step.status = StepStatus::Completed;
+                        }
+                    }
+                }
+            }
             
             let result = process_single_mode(
                 &config.template_segments,
@@ -644,6 +721,12 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     if let Ok(mut tasks) = state_clone.tasks.write() {
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.completed_count += 1;
+                            if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 1)) {
+                                step.status = StepStatus::Completed;
+                            }
+                            if i + 1 <= count && let Some(next_step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 2)) {
+                                next_step.status = StepStatus::Running;
+                            }
                         }
                     }
                 }
@@ -653,6 +736,10 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                         if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                             task.status = TaskStatus::Error;
                             task.error_message = Some(e);
+                            if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == format!("video_{}", i + 1)) {
+                                step.status = StepStatus::Error;
+                                step.error = Some(e.clone());
+                            }
                         }
                     }
                     return;
@@ -664,6 +751,9 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = TaskStatus::Completed;
                 task.completed_at = Some(Utc::now());
+                if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == "finish") {
+                    step.status = StepStatus::Completed;
+                }
                 info!("任务完成: id={}", task_id);
             }
         }

@@ -19,6 +19,13 @@ export interface VideoConfig {
   updated_at: string;
 }
 
+export interface TaskStep {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'error';
+  error?: string;
+}
+
 export interface Task {
   id: string;
   config_id: string;
@@ -32,6 +39,8 @@ export interface Task {
   started_at: string | null;
   completed_at: string | null;
   error_message: string | null;
+  current_video: number;
+  progress_steps: TaskStep[];
 }
 
 export const createDefaultConfig = (): VideoConfig => ({
