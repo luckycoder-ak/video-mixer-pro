@@ -116,6 +116,8 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           handleInputChange('tutorial_folder', selected);
         } else if (index !== undefined) {
           handleSegmentChange(index, 'source_folder', selected);
+        } else {
+          handleInputChange('output_folder', selected);
         }
       }
     } catch (error) {
@@ -330,6 +332,25 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                 </span>
               </div>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">输出文件夹</label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleSelectFolder(false, undefined)}
+                className="px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                选择输出文件夹
+              </button>
+              <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+                <span>📂</span>
+                <span className="truncate">
+                  {formData.output_folder || '未选择（默认下载目录）'}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">生成的视频将保存到此文件夹，命名格式：配置名称-1.mp4, 配置名称-2.mp4...</p>
           </div>
 
           <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent" />

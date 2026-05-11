@@ -15,6 +15,7 @@ export interface VideoConfig {
   segment_count: number;
   template_segments: TemplateSegment[];
   tutorial_folder: string;
+  output_folder: string;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +58,7 @@ export const createDefaultConfig = (): VideoConfig => ({
     { segment_index: 3, source_folder: '', crop_mode: 'single', duration: 50 },
   ],
   tutorial_folder: '',
+  output_folder: '',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 });

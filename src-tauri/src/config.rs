@@ -31,6 +31,7 @@ pub struct VideoConfig {
     pub segment_count: usize,
     pub template_segments: Vec<TemplateSegment>,
     pub tutorial_folder: String,
+    pub output_folder: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -48,6 +49,7 @@ impl VideoConfig {
             segment_count: 3,
             template_segments: Vec::new(),
             tutorial_folder: String::new(),
+            output_folder: String::new(),
             created_at: now,
             updated_at: now,
         }
