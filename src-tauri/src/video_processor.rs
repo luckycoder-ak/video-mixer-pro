@@ -335,18 +335,18 @@ fn process_dual_mode_optimized(
     let start_time_str = start_time.to_string();
 
     let vf_bg = format!(
-        "scale={}:{}:force_original_aspect_ratio=zoom,blur=15,crop={}:{}",
+        "scale={}:{}:force_original_aspect_ratio=zoom,gblur=sigma=15,pad={}:{}:(ow-iw)/2:(oh-ih)/2",
         output_width * 2, output_height * 2, output_width, output_height
     );
 
     let half_height = output_height * 3 / 4;
     let left_width = output_width / 2;
     let vf_left = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,crop={}:{}",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2",
         left_width, half_height, left_width, half_height
     );
     let vf_right = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,crop={}:{}",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2",
         left_width, half_height, left_width, half_height
     );
 
