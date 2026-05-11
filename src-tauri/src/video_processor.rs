@@ -639,6 +639,92 @@ fn process_quadrant_mode_optimized(
     Ok(())
 }
 
+fn get_random_transition_type() -> String {
+    let transitions = vec![
+        "fade".to_string(),
+        "dissolve".to_string(),
+        "wipeleft".to_string(),
+        "wiperight".to_string(),
+        "wipeup".to_string(),
+        "wipedown".to_string(),
+    ];
+    
+    let index = rand::random::<usize>() % transitions.len();
+    transitions[index].clone()
+}
+
+fn create_transition_effect(
+    video1: &PathBuf,
+    video2: &PathBuf,
+    output: &PathBuf,
+    transition_type: &str,
+    duration: f32,
+) -> Result<(), String> {
+    info!("创建转场效果: type={}, duration={}秒", transition_type, duration);
+    
+    let video1_str = video1.to_string_lossy().to_string();
+    let video2_str = video2.to_string_lossy().to_string();
+    let output_str = output.to_string_lossy().to_string();
+    let duration_str = duration.to_string();
+    
+    let half_duration = duration / 2.0;
+    let half_duration_str = half_duration.to_string();
+    
+    let encoder = detect_best_encoder();
+    
+    let filter_complex = match transition_type {
+        "fade" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        "dissolve" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=dissolve:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        "wipeleft" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipeleft:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        "wiperight" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wiperight:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        "wipeup" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipeup:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        "wipedown" => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=wipedown:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+        _ => format!(
+            "[0:v]trim=0:{},setpts=PTS-STARTPTS[v0];[1:v]trim={}:,setpts=PTS-STARTPTS+{}/TB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition=fade:duration={}:offset={}[final]",
+            half_duration_str, half_duration_str, half_duration_str, duration_str, half_duration_str
+        ),
+    };
+    
+    let mut args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), video1_str,
+        "-i".to_string(), video2_str,
+        "-filter_complex".to_string(), filter_complex,
+        "-map".to_string(), "[final]".to_string(),
+        "-c:v".to_string(), encoder.video_codec.clone(),
+        "-an".to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-threads".to_string(), "4".to_string(),
+        "-y".to_string(),
+        output_str,
+    ];
+    args.extend(encoder.extra_args.clone());
+    
+    let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_ffmpeg_fast(&args_ref)?;
+    
+    Ok(())
+}
+
 fn process_single_mode(
     template_segments: &[super::config::TemplateSegment],
     tutorial_folder: &str,
@@ -655,6 +741,7 @@ fn process_single_mode(
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
     let mut start_time: f32 = 0.0;
+    let transition_duration: f32 = 1.0;
 
     for (i, segment) in template_segments.iter().enumerate() {
         let videos = get_video_files(&segment.source_folder)?;
@@ -673,18 +760,25 @@ fn process_single_mode(
         }
 
         let selected = select_random_videos(&videos, video_count, &HashSet::new())?;
+        
+        let actual_duration = if i < template_segments.len() - 1 {
+            (segment.duration - transition_duration).max(0.5)
+        } else {
+            segment.duration
+        };
+        
         let processed = process_segment(
             &selected,
             &segment.crop_mode,
             output_width,
             output_height,
-            segment.duration,
+            actual_duration,
             start_time,
             &temp_dir,
         )?;
 
         segment_files.push(processed.output_path);
-        start_time += segment.duration;
+        start_time += actual_duration;
     }
 
     if !tutorial_folder.is_empty() {
@@ -716,9 +810,30 @@ fn process_single_mode(
         }
     }
 
+    let mut transition_segment_files: Vec<PathBuf> = Vec::new();
+    
+    for i in 0..segment_files.len() {
+        transition_segment_files.push(segment_files[i].clone());
+        
+        if i < segment_files.len() - 1 {
+            let transition_type = get_random_transition_type();
+            let transition_file = temp_dir.join(format!("transition_{}_{}.mp4", i, Uuid::new_v4()));
+            
+            create_transition_effect(
+                &segment_files[i],
+                &segment_files[i + 1],
+                &transition_file,
+                &transition_type,
+                transition_duration,
+            )?;
+            
+            transition_segment_files.push(transition_file);
+        }
+    }
+
     let concat_file = temp_dir.join("concat.txt");
     let mut concat_content = String::new();
-    for file in &segment_files {
+    for file in &transition_segment_files {
         concat_content.push_str(&format!("file '{}'", file.to_string_lossy()));
         concat_content.push('\n');
     }
@@ -774,6 +889,9 @@ fn process_single_mode(
     }
 
     for file in &segment_files {
+        let _ = fs::remove_file(file);
+    }
+    for file in &transition_segment_files {
         let _ = fs::remove_file(file);
     }
     let _ = fs::remove_file(&concat_file);
