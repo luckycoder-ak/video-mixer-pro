@@ -277,7 +277,6 @@ fn process_single_mode_optimized(
     );
     let duration_str = duration.to_string();
     let video_codec = encoder.video_codec.clone();
-    let audio_codec = encoder.audio_codec.clone();
 
     let mut args: Vec<String> = vec![
         "-hide_banner".to_string(),
@@ -285,7 +284,7 @@ fn process_single_mode_optimized(
         "-i".to_string(), input_str,
         "-vf".to_string(), vf_str,
         "-c:v".to_string(), video_codec,
-        "-c:a".to_string(), audio_codec,
+        "-an".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-movflags".to_string(), "+faststart".to_string(),
         "-threads".to_string(), "4".to_string(),
@@ -316,7 +315,6 @@ fn process_dual_mode_optimized(
     let encoder = detect_best_encoder();
 
     let encoder_video_codec = encoder.video_codec.clone();
-    let encoder_audio_codec = encoder.audio_codec.clone();
 
     let left_scaled = temp_dir.join(format!("left_{}.mp4", Uuid::new_v4()));
     let right_scaled = temp_dir.join(format!("right_{}.mp4", Uuid::new_v4()));
@@ -338,7 +336,6 @@ fn process_dual_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_left = vf_left.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -346,7 +343,7 @@ fn process_dual_mode_optimized(
                 "-i".to_string(), left_str,
                 "-vf".to_string(), vf_left,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 left_scaled_str,
@@ -368,7 +365,6 @@ fn process_dual_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_right = vf_right.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -376,7 +372,7 @@ fn process_dual_mode_optimized(
                 "-i".to_string(), right_str,
                 "-vf".to_string(), vf_right,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 right_scaled_str,
@@ -402,7 +398,7 @@ fn process_dual_mode_optimized(
         "-filter_complex".to_string(), filter_complex_str,
         "-map".to_string(), "[stacked]".to_string(),
         "-c:v".to_string(), encoder.video_codec.clone(),
-        "-c:a".to_string(), encoder.audio_codec.clone(),
+        "-an".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-movflags".to_string(), "+faststart".to_string(),
         "-threads".to_string(), "4".to_string(),
@@ -436,7 +432,6 @@ fn process_quadrant_mode_optimized(
     let encoder = detect_best_encoder();
 
     let encoder_video_codec = encoder.video_codec.clone();
-    let encoder_audio_codec = encoder.audio_codec.clone();
 
     let tl_scaled = temp_dir.join(format!("tl_{}.mp4", Uuid::new_v4()));
     let tr_scaled = temp_dir.join(format!("tr_{}.mp4", Uuid::new_v4()));
@@ -465,7 +460,6 @@ fn process_quadrant_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -473,7 +467,7 @@ fn process_quadrant_mode_optimized(
                 "-i".to_string(), tl_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 tl_scaled_str,
@@ -490,7 +484,6 @@ fn process_quadrant_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -498,7 +491,7 @@ fn process_quadrant_mode_optimized(
                 "-i".to_string(), tr_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 tr_scaled_str,
@@ -515,7 +508,6 @@ fn process_quadrant_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -523,7 +515,7 @@ fn process_quadrant_mode_optimized(
                 "-i".to_string(), bl_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 bl_scaled_str,
@@ -540,7 +532,6 @@ fn process_quadrant_mode_optimized(
         let duration_str = duration_str.clone();
         let vf_base = vf_base.clone();
         let video_codec = encoder_video_codec.clone();
-        let audio_codec = encoder_audio_codec.clone();
         let extra_args = encoder.extra_args.clone();
         thread::spawn(move || {
             let mut args: Vec<String> = vec![
@@ -548,7 +539,7 @@ fn process_quadrant_mode_optimized(
                 "-i".to_string(), br_str,
                 "-vf".to_string(), vf_base,
                 "-c:v".to_string(), video_codec,
-                "-c:a".to_string(), audio_codec,
+                "-an".to_string(),
                 "-t".to_string(), duration_str,
                 "-y".to_string(),
                 br_scaled_str,
@@ -578,7 +569,7 @@ fn process_quadrant_mode_optimized(
         "-filter_complex".to_string(), filter_complex_str,
         "-map".to_string(), "[grid]".to_string(),
         "-c:v".to_string(), encoder.video_codec.clone(),
-        "-c:a".to_string(), encoder.audio_codec.clone(),
+        "-an".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-movflags".to_string(), "+faststart".to_string(),
         "-threads".to_string(), "4".to_string(),
