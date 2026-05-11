@@ -734,6 +734,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 task.status = TaskStatus::Running;
                 task.started_at = Some(Utc::now());
                 task.current_video = 1;
+                task.output_folder = output_dir.to_string_lossy().to_string();
                 task.progress_steps = vec![
                     TaskStep { id: "init".to_string(), name: "初始化".to_string(), status: StepStatus::Completed, error: None },
                     TaskStep { id: "video_1".to_string(), name: format!("处理视频 1/{}", count), status: StepStatus::Running, error: None },

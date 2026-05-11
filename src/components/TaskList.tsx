@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Task, TaskStep } from '../types';
 
 interface Props {
@@ -9,6 +10,54 @@ interface Props {
 export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const [progressModal, setProgressModal] = useState<Task | null>(null);
+
+  const handlePauseTask = async (task: Task) => {
+    try {
+      await invoke('pause_task', { id: task.id });
+      setContextMenu(null);
+      onRefresh();
+    } catch (error) {
+      console.error('暂停任务失败:', error);
+    }
+  };
+
+  const handleResumeTask = async (task: Task) => {
+    try {
+      await invoke('resume_task', { id: task.id });
+      setContextMenu(null);
+      onRefresh();
+    } catch (error) {
+      console.error('恢复任务失败:', error);
+    }
+  };
+
+  const handleDeleteTask = async (task: Task) => {
+    if (!confirm('确定要删除这个任务吗？')) {
+      setContextMenu(null);
+      return;
+    }
+    try {
+      await invoke('delete_task', { id: task.id });
+      setContextMenu(null);
+      onRefresh();
+    } catch (error) {
+      console.error('删除任务失败:', error);
+    }
+  };
+
+  const handleOpenFolder = async (task: Task) => {
+    try {
+      const outputPath = task.output_folder || '';
+      if (outputPath) {
+        await invoke('open_folder', { path: outputPath });
+      } else {
+        alert('该任务没有输出路径信息');
+      }
+    } catch (error) {
+      console.error('打开文件夹失败:', error);
+    }
+    setContextMenu(null);
+  };
 
   const getStatusBadge = (status: Task['status']) => {
     switch (status) {
@@ -175,15 +224,24 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                     </button>
                   )}
                   {task.status === 'completed' ? (
-                    <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                    <button
+                      onClick={() => handleOpenFolder(task)}
+                      className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
                       打开文件夹
                     </button>
                   ) : task.status === 'paused' ? (
-                    <button className="px-3 py-1.5 text-sm bg-gradient-to-r from-secondary to-secondary-dark text-white rounded-lg hover:shadow-md transition-all">
+                    <button
+                      onClick={() => handleResumeTask(task)}
+                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-md transition-all"
+                    >
                       继续
                     </button>
-                  ) : task.status !== 'running' ? (
-                    <button className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                  ) : task.status === 'running' ? (
+                    <button
+                      onClick={() => handlePauseTask(task)}
+                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg hover:shadow-md transition-all"
+                    >
                       暂停
                     </button>
                   ) : null}
@@ -213,24 +271,36 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               <span>查看进度</span>
             </button>
             {contextMenu.task.status === 'paused' && (
-              <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+              <button 
+                onClick={() => handleResumeTask(contextMenu.task)}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
                 <span>▶️</span>
                 <span>继续执行</span>
               </button>
             )}
             {contextMenu.task.status === 'running' && (
-              <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+              <button 
+                onClick={() => handlePauseTask(contextMenu.task)}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
                 <span>⏸️</span>
                 <span>暂停任务</span>
               </button>
             )}
             <div className="h-px bg-gray-200 my-2" />
-            <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+            <button 
+              onClick={() => handleOpenFolder(contextMenu.task)}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
               <span>📂</span>
               <span>打开输出文件夹</span>
             </button>
             <div className="h-px bg-gray-200 my-2" />
-            <button className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+            <button 
+              onClick={() => handleDeleteTask(contextMenu.task)}
+              className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+            >
               <span>🗑️</span>
               <span>删除任务</span>
             </button>
