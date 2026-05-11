@@ -136,7 +136,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
           tasks.map((task, index) => (
             <div
               key={task.id}
-              className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
+              className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group"
               onContextMenu={(e) => handleContextMenu(e, task)}
             >
               <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
@@ -166,7 +166,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               </div>
               <div className="col-span-2">
                 <div className="flex gap-2">
-                  {task.status === 'running' && (
+                  {(task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error') && (
                     <button
                       onClick={() => handleViewProgress(task)}
                       className="px-3 py-1.5 text-sm bg-gradient-to-r from-primary to-primary-dark text-white rounded-lg hover:shadow-md transition-all"
