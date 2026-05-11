@@ -199,36 +199,58 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         );
       case 'dual':
         return (
-          <div className="grid grid-cols-2 gap-1">
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频1
+          <div className="flex gap-1">
+            <div className="flex-1 flex flex-col gap-1">
+              <div className="h-4 bg-gray-800 rounded" />
+              <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                视频1
+              </div>
+              <div className="h-4 bg-gray-800 rounded" />
             </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频2
+            <div className="flex-1 flex flex-col gap-1">
+              <div className="h-4 bg-gray-800 rounded" />
+              <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                视频2
+              </div>
+              <div className="h-4 bg-gray-800 rounded" />
             </div>
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
           </div>
         );
       case 'quadrant':
         return (
-          <div className="grid grid-cols-2 grid-rows-2 gap-1">
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频1
+          <div className="flex flex-col gap-1">
+            <div className="flex gap-1">
+              <div className="flex-1 flex flex-col gap-1">
+                <div className="h-4 bg-gray-800 rounded" />
+                <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                  视频1
+                </div>
+                <div className="h-4 bg-gray-800 rounded" />
+              </div>
+              <div className="flex-1 flex flex-col gap-1">
+                <div className="h-4 bg-gray-800 rounded" />
+                <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                  视频2
+                </div>
+                <div className="h-4 bg-gray-800 rounded" />
+              </div>
             </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频2
+            <div className="flex gap-1">
+              <div className="flex-1 flex flex-col gap-1">
+                <div className="h-4 bg-gray-800 rounded" />
+                <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                  视频3
+                </div>
+                <div className="h-4 bg-gray-800 rounded" />
+              </div>
+              <div className="flex-1 flex flex-col gap-1">
+                <div className="h-4 bg-gray-800 rounded" />
+                <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
+                  视频4
+                </div>
+                <div className="h-4 bg-gray-800 rounded" />
+              </div>
             </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频3
-            </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频4
-            </div>
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
-            <div className="bg-gray-800 rounded" style={{ aspectRatio: '9/16' }} />
           </div>
         );
       default:
