@@ -5,8 +5,6 @@ mod storage;
 mod video_processor;
 
 use log::info;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::RwLock;
 use tauri::Manager;
 
@@ -32,7 +30,7 @@ fn main() {
             info!("Application setup complete");
             let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
-            
+
             let data_file = app_data_dir.join("app_data.json");
             if data_file.exists() {
                 if let Ok(content) = std::fs::read_to_string(&data_file) {
@@ -70,19 +68,7 @@ fn main() {
             video_processor::resume_task,
             video_processor::delete_task,
             video_processor::open_folder,
-            read_file,
-            write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[tauri::command]
-pub fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn write_file(path: String, content: String) -> Result<(), String> {
-    fs::write(path, content).map_err(|e| e.to_string())
 }

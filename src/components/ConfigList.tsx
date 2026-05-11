@@ -1,6 +1,7 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { VideoConfig } from '../types';
 
 interface Props {
@@ -28,7 +29,7 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
       });
       if (path) {
         const configData = JSON.stringify(config, null, 2);
-        await invoke('write_file', { path, content: configData });
+        await writeTextFile(path, configData);
         alert(`配置已导出到:\n${path}`);
       }
     } catch (error) {
@@ -44,11 +45,11 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
         filters: [{ name: '配置文件', extensions: ['json'] }],
       });
       if (selected) {
-        const content = await invoke<string>('read_file', { path: selected });
+        const content = await readTextFile(selected as string);
         const config: VideoConfig = JSON.parse(content);
-        
+
         await invoke('import_config', { config });
-        
+
         onRefresh();
         alert('配置导入成功！相关文件夹已自动创建');
       }
@@ -66,7 +67,7 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
       });
       if (path) {
         const data = JSON.stringify(configs, null, 2);
-        await invoke('write_file', { path, content: data });
+        await writeTextFile(path, data);
         alert(`所有配置已导出到:\n${path}`);
       }
     } catch (error) {
@@ -108,7 +109,6 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        {/* Header */}
         <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-1">序号</div>
           <div className="col-span-3">配置名称</div>
@@ -119,7 +119,6 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
           <div className="col-span-2">操作</div>
         </div>
 
-        {/* Body */}
         {configs.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
             <div className="text-6xl mb-4 opacity-50">📂</div>

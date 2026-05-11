@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::AppState;
@@ -123,7 +122,7 @@ pub fn save_config(state: tauri::State<AppState>, config: VideoConfig) -> Result
         info!("Creating new config with id: {}", config.id);
         configs.push(config.clone());
     }
-    
+
     info!("Total configs in state: {}", configs.len());
 
     Ok(config)
