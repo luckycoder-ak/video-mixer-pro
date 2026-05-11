@@ -3,10 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
 
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
