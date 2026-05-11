@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use log::{info, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppData {
@@ -98,13 +99,24 @@ pub fn save_configs(
     fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
     let data_file = app_data_dir.join("app_data.json");
 
+    info!("Saving {} configs and {} tasks to {:?}", configs.len(), tasks.len(), data_file);
+
     let data = AppData {
         configs,
         tasks,
         usage_records: HashMap::new(),
     };
 
-    let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    fs::write(&data_file, content).map_err(|e| e.to_string())?;
+    let content = serde_json::to_string_pretty(&data).map_err(|e| {
+        error!("Failed to serialize data: {}", e);
+        e.to_string()
+    })?;
+    
+    fs::write(&data_file, &content).map_err(|e| {
+        error!("Failed to write file: {}", e);
+        e.to_string()
+    })?;
+    
+    info!("Successfully saved data to {:?}", data_file);
     Ok(())
 }

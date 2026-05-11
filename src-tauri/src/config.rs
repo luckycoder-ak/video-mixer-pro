@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::AppState;
+use log::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSegment {
@@ -96,6 +97,7 @@ pub fn get_config(state: tauri::State<AppState>, id: String) -> Result<Option<Vi
 
 #[tauri::command]
 pub fn save_config(state: tauri::State<AppState>, config: VideoConfig) -> Result<VideoConfig, String> {
+    info!("save_config called with config name: {}, id: {}", config.name, config.id);
     config.validate()?;
 
     let mut configs = state.configs.write().map_err(|e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Vec<VideoConfig>>>| e.to_string())?;
@@ -110,13 +112,17 @@ pub fn save_config(state: tauri::State<AppState>, config: VideoConfig) -> Result
     config.updated_at = Utc::now();
 
     if let Some(pos) = configs.iter().position(|c| c.id == config.id) {
+        info!("Updating existing config at position {}", pos);
         configs[pos] = config.clone();
     } else {
         config.id = Uuid::new_v4().to_string();
         config.created_at = Utc::now();
         config.updated_at = Utc::now();
+        info!("Creating new config with id: {}", config.id);
         configs.push(config.clone());
     }
+    
+    info!("Total configs in state: {}", configs.len());
 
     Ok(config)
 }
