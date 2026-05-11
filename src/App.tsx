@@ -114,7 +114,7 @@ function App() {
   };
 
   return (
-    <div className="w-full max-w-7xl bg-gray-50 rounded-2xl shadow-2xl overflow-hidden animate-fadeIn">
+    <div className="w-full h-full min-h-screen bg-gray-50 overflow-hidden animate-fadeIn">
       {/* Header */}
       <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-3">

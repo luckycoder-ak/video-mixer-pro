@@ -20,6 +20,9 @@ export default {
       fontFamily: {
         sans: ['Noto Sans SC', 'Space Grotesk', 'system-ui', 'sans-serif'],
       },
+      gridTemplateColumns: {
+        '14': 'repeat(14, minmax(0, 1fr))',
+      },
     },
   },
   plugins: [],
