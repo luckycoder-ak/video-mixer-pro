@@ -92,7 +92,7 @@ fi
 echo ""
 echo -e "${GREEN}可执行文件:${NC}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "  src-tauri/target/release/video-mixer-pro.app"
+    echo "  src-tauri/target/release/VideoMixer Pro.app"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     echo "  src-tauri/target/release/video-mixer-pro"
 else
