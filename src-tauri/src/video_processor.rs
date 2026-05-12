@@ -719,7 +719,7 @@ fn apply_chained_xfade(
         }
         
         filter_parts.push(format!(
-            "[v{}][v{}]xfade=transition={}:duration={}:offset={}[v{}_out]",
+            "[v{}_out][{}:v]xfade=transition={}:duration={}:offset={}[v{}_out]",
             i - 1, i, transition_types[i - 1], transition_duration_str, offset, i
         ));
     }
