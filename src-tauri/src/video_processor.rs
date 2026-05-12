@@ -459,6 +459,67 @@ fn persist_tutorial_used(
     Ok(())
 }
 
+fn save_tasks_to_disk(
+    app_data_file: &Arc<RwLock<Option<PathBuf>>>,
+    tasks: &Arc<RwLock<Vec<Task>>>,
+    configs: &Arc<RwLock<Vec<crate::config::VideoConfig>>>,
+    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
+) -> Result<(), String> {
+    let path_opt = app_data_file
+        .read()
+        .map_err(|e| format!("读取 app_data_file 失败: {}", e))?
+        .clone();
+    let Some(path) = path_opt else {
+        return Err("app_data_file 尚未初始化".to_string());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    // 读取现有数据，保留使用记录
+    let (usage_records, existing_used_tutorial) = if path.exists() {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(existing_data) = serde_json::from_str::<crate::storage::AppData>(&content) {
+                (existing_data.usage_records, existing_data.used_tutorial_videos)
+            } else {
+                (std::collections::HashMap::new(), Vec::new())
+            }
+        } else {
+            (std::collections::HashMap::new(), Vec::new())
+        }
+    } else {
+        (std::collections::HashMap::new(), Vec::new())
+    };
+
+    // 与内存中最新的教程已用集合合并
+    let merged_used_tutorial: Vec<String> = {
+        let mut set: HashSet<String> = existing_used_tutorial.into_iter().collect();
+        if let Ok(in_memory) = tutorial_used_global.read() {
+            for v in in_memory.iter() {
+                set.insert(v.clone());
+            }
+        }
+        set.into_iter().collect()
+    };
+
+    // 获取最新的任务和配置
+    let current_tasks = tasks.read().map_err(|e| e.to_string())?.clone();
+    let current_configs = configs.read().map_err(|e| e.to_string())?.clone();
+
+    let data = crate::storage::AppData {
+        configs: current_configs,
+        tasks: current_tasks,
+        usage_records,
+        used_tutorial_videos: merged_used_tutorial,
+    };
+
+    let content = serde_json::to_string_pretty(&data).map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&path, content).map_err(|e| format!("写入 app_data.json 失败: {}", e))?;
+
+    info!("成功保存 {} 个任务到磁盘", data.tasks.len());
+    Ok(())
+}
+
 pub fn calculate_video_dimensions(ratio: &str) -> (u32, u32) {
     match ratio {
         "9:16" => (1080, 1920),
@@ -562,14 +623,33 @@ pub fn get_random_transition_type() -> String {
 /**
  根据各模板片段的时长，计算每个片段在素材时间线上的起始偏移。
  */
-fn compute_segment_offsets(durations: &[f32]) -> Vec<f32> {
-    let mut offsets = Vec::with_capacity(durations.len());
-    let mut acc: f32 = 0.0;
-    for d in durations {
-        offsets.push(acc);
-        acc += *d;
+/// 根据时间点数组计算各片段的起始偏移量
+/// 时间点表示每个片段的结束时间，例如：[3.28, 6.29, 9.33]
+/// 则：
+/// - 第一段起始=0，结束=3.28，时长=3.28
+/// - 第二段起始=3.28，结束=6.29，时长=3.01
+/// - 第三段起始=6.29，结束=9.33，时长=3.04
+fn compute_segment_offsets(time_points: &[f32]) -> Vec<f32> {
+    let mut offsets = Vec::with_capacity(time_points.len());
+    let mut prev_time_point: f32 = 0.0;
+    for (i, &time_point) in time_points.iter().enumerate() {
+        if i == 0 {
+            offsets.push(0.0);
+        } else {
+            offsets.push(prev_time_point);
+        }
+        prev_time_point = time_point;
     }
     offsets
+}
+
+/// 根据时间点数组计算各片段的实际时长
+fn compute_segment_durations(time_points: &[f32]) -> Vec<f32> {
+    let offsets = compute_segment_offsets(time_points);
+    time_points.iter()
+        .enumerate()
+        .map(|(i, &tp)| tp - offsets[i])
+        .collect()
 }
 
 fn process_segment(
@@ -1108,7 +1188,7 @@ fn apply_chained_xfade(
         let fade_out_start = (total_duration - 1.0).max(0.0);
 
         let filter_complex = format!(
-            "{};[{}:a]volume=0.8,afade=t=in:ss=0:d=0.5,afade=t=out:st={}:d=1.0[a]",
+            "{};[{}:a]volume=0.8,afade=t=out:st={}:d=1.0[a]",
             filter_complex_base, audio_input_index, fade_out_start
         );
 
@@ -1218,10 +1298,11 @@ fn process_single_mode(
     let _temp_dir_guard = TempDirGuard(temp_dir.clone());
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let transition_duration: f32 = 0.5;
+    let transition_duration: f32 = 0.25;
 
-    let template_durations: Vec<f32> = template_segments.iter().map(|s| s.duration).collect();
-    let segment_offsets = compute_segment_offsets(&template_durations);
+    let time_points: Vec<f32> = template_segments.iter().map(|s| s.duration).collect();
+    let segment_offsets = compute_segment_offsets(&time_points);
+    let segment_durations = compute_segment_durations(&time_points);
 
     for (i, segment) in template_segments.iter().enumerate() {
         if cancel.load(Ordering::SeqCst) {
@@ -1252,7 +1333,7 @@ fn process_single_mode(
 
         // 预过滤时长不足的素材：截取范围是 [start_offset, start_offset + duration]，
         // 否则 ffmpeg 在 dual/quadrant 的 cell 阶段会产出空视频流，merge 时报 "matches no streams"。
-        let min_duration = segment_offsets[i] + segment.duration;
+        let min_duration = segment_offsets[i] + segment_durations[i];
         let videos = filter_videos_by_min_duration(&videos, min_duration);
         if videos.len() < video_count {
             let err = format!(
@@ -1286,7 +1367,7 @@ fn process_single_mode(
             &segment.crop_mode,
             (output_width, output_height),
             segment_offsets[i],
-            segment.duration,
+            segment_durations[i],
             &temp_dir,
         ) {
             Ok(()) => {
@@ -1358,7 +1439,7 @@ fn process_single_mode(
 
     let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
 
-    // S7：教程片段同样对齐 setsar/fps/format
+    // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容
     let tutorial_scale_filter = format!(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p",
         output_width, output_height, output_width, output_height
@@ -1373,9 +1454,9 @@ fn process_single_mode(
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
         "-i".to_string(), tutorial_input_str,
-        "-an".to_string(),
         "-vf".to_string(), tutorial_scale_filter,
         "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-c:a".to_string(), encoder.audio_codec.to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-threads".to_string(), num_cpus_str,
         "-y".to_string(),
@@ -1385,7 +1466,7 @@ fn process_single_mode(
     match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
         Ok(()) => {
             push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Completed, None);
-            segment_files.push(tutorial_scaled);
+            // 教程片段不加入segment_files参与转场，后续直接拼接
         }
         Err(e) => {
             push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(e.clone()));
@@ -1395,6 +1476,7 @@ fn process_single_mode(
 
     let output_path = output_dir.join(output_filename);
     let temp_output_path = temp_dir.join("temp_output.mp4");
+    let temp_with_tutorial_path = temp_dir.join("temp_with_tutorial.mp4");
 
     let mut segment_durations: Vec<f32> = Vec::new();
     for (i, segment_file) in segment_files.iter().enumerate() {
@@ -1414,6 +1496,7 @@ fn process_single_mode(
     push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Running, None);
 
     info!("开始应用链式转场...");
+    // 先不对模板片段添加音频，音频将在最后与教程片段合并时添加
     match apply_chained_xfade(
         task_id, cancel,
         &segment_files,
@@ -1423,7 +1506,7 @@ fn process_single_mode(
         transition_duration,
         output_width,
         output_height,
-        audio_path,
+        "",  // 暂时不传音频
     ) {
         Ok(()) => push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Completed, None),
         Err(e) => {
@@ -1432,10 +1515,143 @@ fn process_single_mode(
         }
     }
 
+    // 处理模板片段和教程片段的合并（添加转场和音频）
+    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
+    if tutorial_scaled.exists() {
+        let concat_step_id = format!("video_{}__concat", video_index);
+        push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Running, None);
+
+        // 获取教程片段时长
+        let tutorial_duration = probe_video_duration(&tutorial_scaled.to_string_lossy())?;
+        info!("教程片段时长: {:.2}秒", tutorial_duration);
+
+        // 计算总时长（模板片段总时长 - 转场时间 + 教程片段时长 - 额外转场时间）
+        let template_total_duration = segment_durations.iter().fold(0.0, |acc, &d| acc + d)
+            - (transition_duration * (segment_files.len() - 1) as f32);
+        let total_duration = template_total_duration + tutorial_duration - transition_duration;
+
+        // 添加模板和教程之间的转场类型
+        let tutorial_transition = get_random_transition_type();
+        info!("模板与教程转场类型: {}", tutorial_transition);
+
+        let encoder = detect_best_encoder();
+        let num_cpus_str = num_cpus::get().to_string();
+
+        let mut args: Vec<String> = vec![
+            "-hide_banner".to_string(),
+            "-loglevel".to_string(), "error".to_string(),
+            "-i".to_string(), temp_output_path.to_string_lossy().to_string(),
+            "-i".to_string(), tutorial_scaled.to_string_lossy().to_string(),
+        ];
+
+        // 如果有音频，添加音频输入
+        let mut filter_complex = String::new();
+        let mut map_args: Vec<String> = Vec::new();
+
+        if !audio_path.is_empty() {
+            args.extend(["-i".to_string(), audio_path.to_string()]);
+            let audio_input_index = 2;
+            let fade_out_start = (total_duration - 1.0).max(0.0);
+            
+            // 转场滤镜 + 音频处理
+            filter_complex = format!(
+                "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
+                 [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video];\
+                 [{}:a]volume=0.8,afade=t=out:st={}:d=1.0[a]",
+                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
+                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
+                audio_input_index, fade_out_start
+            );
+        } else {
+            // 只有视频转场，无声
+            filter_complex = format!(
+                "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
+                 [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video]",
+                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
+                tutorial_transition, transition_duration, (template_total_duration - transition_duration)
+            );
+        }
+
+        args.extend([
+            "-filter_complex".to_string(), filter_complex,
+            "-map".to_string(), "[final_video]".to_string(),
+        ]);
+
+        if !audio_path.is_empty() {
+            args.extend([
+                "-map".to_string(), "[a]".to_string(),
+            ]);
+        }
+
+        args.extend([
+            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:a".to_string(), encoder.audio_codec.to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-movflags".to_string(), "+faststart".to_string(),
+            "-threads".to_string(), num_cpus_str,
+            "-y".to_string(),
+            temp_with_tutorial_path.to_string_lossy().to_string(),
+        ]);
+
+        match run_ffmpeg_with_cancel(task_id, cancel, &args) {
+            Ok(()) => {
+                push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Completed, None);
+            }
+            Err(e) => {
+                push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Error, Some(e.clone()));
+                return Err(e);
+            }
+        }
+    } else {
+        // 如果没有教程片段，直接复制转场后的输出，并添加音频
+        if !audio_path.is_empty() {
+            let audio_step_id = format!("video_{}__audio", video_index);
+            push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Running, None);
+
+            let template_total_duration = segment_durations.iter().fold(0.0, |acc, &d| acc + d)
+                - (transition_duration * (segment_files.len() - 1) as f32);
+            let fade_out_start = (template_total_duration - 1.0).max(0.0);
+
+            let encoder = detect_best_encoder();
+            let num_cpus_str = num_cpus::get().to_string();
+
+            let args: Vec<String> = vec![
+                "-hide_banner".to_string(),
+                "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), temp_output_path.to_string_lossy().to_string(),
+                "-i".to_string(), audio_path.to_string(),
+                "-filter_complex".to_string(),
+                format!("[1:a]volume=0.8,afade=t=out:st={}:d=1.0[a]", fade_out_start),
+                "-map".to_string(), "0:v".to_string(),
+                "-map".to_string(), "[a]".to_string(),
+                "-c:v".to_string(), encoder.video_codec.to_string(),
+                "-c:a".to_string(), encoder.audio_codec.to_string(),
+                "-pix_fmt".to_string(), "yuv420p".to_string(),
+                "-movflags".to_string(), "+faststart".to_string(),
+                "-threads".to_string(), num_cpus_str,
+                "-y".to_string(),
+                temp_with_tutorial_path.to_string_lossy().to_string(),
+            ];
+
+            match run_ffmpeg_with_cancel(task_id, cancel, &args) {
+                Ok(()) => {
+                    push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Completed, None);
+                }
+                Err(e) => {
+                    push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Error, Some(e.clone()));
+                    return Err(e);
+                }
+            }
+        } else {
+            fs::copy(&temp_output_path, &temp_with_tutorial_path)
+                .map_err(|e| format!("复制视频文件失败: {}", e))?;
+        }
+    }
+
     if !subtitle_path.is_empty() {
         let sub_step_id = format!("video_{}__subtitle", video_index);
         push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Running, None);
-        match add_subtitles(task_id, cancel, &temp_output_path, subtitle_path, &output_path) {
+        match add_subtitles(task_id, cancel, &temp_with_tutorial_path, subtitle_path, &output_path) {
             Ok(()) => push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None),
             Err(e) => {
                 push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Error, Some(e.clone()));
@@ -1443,7 +1659,7 @@ fn process_single_mode(
             }
         }
     } else {
-        fs::copy(&temp_output_path, &output_path)
+        fs::copy(&temp_with_tutorial_path, &output_path)
             .map_err(|e| format!("复制视频文件失败: {}", e))?;
     }
 
@@ -1512,9 +1728,11 @@ fn add_subtitles(
         Err(e) => {
             error!("字幕添加失败: {}", e);
             let backup_filter = if is_ass_format {
-                format!("ass={}", temp_subtitle_str)
+                let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
+                format!("ass='{}'", escaped_path)
             } else {
-                format!("subtitles={}:si=0", temp_subtitle_str)
+                let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
+                format!("subtitles='{}':si=0", escaped_path)
             };
 
             let backup_args: Vec<String> = vec![
@@ -1545,7 +1763,11 @@ fn add_subtitles(
 }
 
 fn escape_ffmpeg_filter(path: &str) -> String {
-    path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    // FFmpeg 滤镜中的路径转义规则：
+    // 1. 反斜杠需要转义为双反斜杠
+    // 2. 单引号在单引号字符串内部不需要转义（外部的单引号已经包裹整个路径）
+    // 3. 冒号是选项分隔符，路径内的冒号不需要转义（macOS/Linux 路径不含冒号）
+    path.replace("\\", "\\\\")
 }
 
 /**
@@ -1599,6 +1821,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     let pause_flag = register_pause(&task.id);
 
     let tasks_clone = state.tasks.clone();
+    let configs_clone = state.configs.clone();
     let task_id = task.id.clone();
     let config_clone = config.clone();
     let output_dir = task_output_dir.clone();
@@ -1753,6 +1976,11 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             }
         }
 
+        // 保存任务状态到磁盘
+        if let Err(e) = save_tasks_to_disk(&app_data_file, &tasks_clone, &configs_clone, &tutorial_used_global) {
+            error!("保存任务状态到磁盘失败: {}", e);
+        }
+
         unregister_task(&task_id);
         info!("任务 {} 全部完成", task_id);
     });
@@ -1768,6 +1996,18 @@ pub fn pause_task(state: tauri::State<AppState>, id: String) -> Result<(), Strin
     if let Some(task) = tasks.iter_mut().find(|t| t.id == id) {
         task.status = TaskStatus::Paused;
         info!("任务 {} 已暂停", id);
+        // 释放锁后再保存到磁盘
+        drop(tasks);
+        if let Err(e) = save_tasks_to_disk(
+            &state.app_data_file,
+            &state.tasks,
+            &state.configs,
+            &state.used_tutorial_videos,
+        ) {
+            error!("保存任务状态失败: {}", e);
+        } else {
+            info!("成功保存任务状态到磁盘");
+        }
         Ok(())
     } else {
         Err(format!("任务 {} 不存在", id))
@@ -1782,6 +2022,18 @@ pub fn resume_task(state: tauri::State<AppState>, id: String) -> Result<(), Stri
     if let Some(task) = tasks.iter_mut().find(|t| t.id == id) {
         task.status = TaskStatus::Running;
         info!("任务 {} 已恢复", id);
+        // 释放锁后再保存到磁盘
+        drop(tasks);
+        if let Err(e) = save_tasks_to_disk(
+            &state.app_data_file,
+            &state.tasks,
+            &state.configs,
+            &state.used_tutorial_videos,
+        ) {
+            error!("保存任务状态失败: {}", e);
+        } else {
+            info!("成功保存任务状态到磁盘");
+        }
         Ok(())
     } else {
         Err(format!("任务 {} 不存在", id))
@@ -1796,6 +2048,18 @@ pub fn delete_task(state: tauri::State<AppState>, id: String) -> Result<(), Stri
     let mut tasks = state.tasks.write().map_err(|e| e.to_string())?;
     tasks.retain(|t| t.id != id);
     info!("任务 {} 已删除", id);
+    // 释放锁后再保存到磁盘
+    drop(tasks);
+    if let Err(e) = save_tasks_to_disk(
+        &state.app_data_file,
+        &state.tasks,
+        &state.configs,
+        &state.used_tutorial_videos,
+    ) {
+        error!("保存任务状态失败: {}", e);
+    } else {
+        info!("成功保存任务状态到磁盘");
+    }
     Ok(())
 }
 

@@ -137,20 +137,6 @@ impl VideoConfig {
             return Err(format!("教程素材文件夹不存在: {}", self.tutorial_folder));
         }
 
-        let total_segment_duration: f32 = self
-            .template_segments
-            .iter()
-            .map(|s| s.duration)
-            .sum();
-
-        let diff = (total_segment_duration - self.template_duration).abs();
-        if diff > 0.05 {
-            return Err(format!(
-                "片段时长之和不等于模板片段总时长: {} != {}（允许误差 0.05 秒）",
-                total_segment_duration, self.template_duration
-            ));
-        }
-
         Ok(())
     }
 }

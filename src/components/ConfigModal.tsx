@@ -178,10 +178,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     });
   };
 
-  const totalSegmentDuration = formData.template_segments.reduce((sum, s) => sum + s.duration, 0);
-  const durationDiff = formData.template_duration - totalSegmentDuration;
-  const isDurationValid = Math.abs(durationDiff) <= 0.05;
-
   const validateBasicTab = (): boolean => {
     if (!formData.root_folder) {
       alert('请选择主目录');
@@ -199,10 +195,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   };
 
   const validateTemplateTab = (): boolean => {
-    if (!isDurationValid) {
-      alert(`片段时长验证失败：当前总时长 ${totalSegmentDuration.toFixed(2)} 秒，模板片段总时长 ${formData.template_duration} 秒（允许误差 0.05 秒）`);
-      return false;
-    }
     const hasEmptyFolders = formData.template_segments.some((s) => !s.source_folder);
     if (hasEmptyFolders) {
       alert('请为所有模板片段选择来源文件夹');
@@ -242,84 +234,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       alert('保存失败，请重试');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleTemplateDurationChange = (newDuration: number) => {
-    if (newDuration < 0 || isNaN(newDuration)) {
-      return;
-    }
-
-    handleInputChange('template_duration', newDuration);
-
-    const segments = [...formData.template_segments];
-    if (segments.length > 0 && newDuration > 0) {
-      const count = segments.length;
-      const avgDuration = Math.round((newDuration / count) * 10) / 10;
-      let allocated = 0;
-
-      for (let i = 0; i < count; i++) {
-        if (i === count - 1) {
-          const remaining = Math.round((newDuration - allocated) * 10) / 10;
-          segments[i] = { ...segments[i], duration: remaining > 0 ? remaining : avgDuration };
-        } else {
-          segments[i] = { ...segments[i], duration: avgDuration };
-          allocated += avgDuration;
-        }
-      }
-
-      handleInputChange('template_segments', segments);
-    }
-  };
-
-  const getCropModePreview = (mode: string) => {
-    switch (mode) {
-      case 'single':
-        return (
-          <div className="grid grid-cols-1 gap-1">
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频1
-            </div>
-          </div>
-        );
-      case 'dual':
-        return (
-          <div className="flex gap-1">
-            <div className="flex-1 flex flex-col gap-1">
-              <div className="h-4 bg-gray-800 rounded" />
-              <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-                视频1
-              </div>
-              <div className="h-4 bg-gray-800 rounded" />
-            </div>
-            <div className="flex-1 flex flex-col gap-1">
-              <div className="h-4 bg-gray-800 rounded" />
-              <div className="flex-1 aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-                视频2
-              </div>
-              <div className="h-4 bg-gray-800 rounded" />
-            </div>
-          </div>
-        );
-      case 'quadrant':
-        return (
-          <div className="grid grid-cols-2 gap-1">
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频1
-            </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频2
-            </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频3
-            </div>
-            <div className="aspect-[9/16] bg-gray-700 rounded flex items-center justify-center text-xs text-gray-400">
-              视频4
-            </div>
-          </div>
-        );
-      default:
-        return null;
     }
   };
 
@@ -470,20 +384,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   const renderTemplateTab = () => (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            模板片段总时长 <span className="text-gray-400">(秒)</span>
-          </label>
-          <input
-            type="number"
-            value={formData.template_duration}
-            onChange={(e) => handleTemplateDurationChange(parseFloat(e.target.value) || 0)}
-            min="0.1"
-            step="0.1"
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-4 mb-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">片段数量</label>
           <select
@@ -572,29 +473,23 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                     ))}
                   </div>
 
-                  <div className="bg-gray-900 rounded-lg p-3">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">效果预览</p>
-                    <div className="w-20 mx-auto">
-                      {getCropModePreview(segment.crop_mode)}
-                    </div>
-                  </div>
-
-                  <div className="mt-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-500 flex items-start gap-2">
+                  <div className="px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-500 flex items-start gap-2">
                     <span className="mt-0.5">💡</span>
                     <span>{getCropModeHint(segment.crop_mode)}</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">片段时长 (秒)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">片段时间点 (秒)</label>
                   <input
                     type="number"
                     value={segment.duration}
                     onChange={(e) => handleSegmentChange(index, 'duration', parseFloat(e.target.value) || 0)}
                     min="0.1"
-                    step="0.1"
+                    step="0.01"
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
+                  <p className="text-xs text-gray-400 mt-1">该片段的结束时间点，前一片段的终点即为当前片段的起点</p>
                 </div>
               </div>
             )}
@@ -602,21 +497,6 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         ))}
       </div>
 
-      <div className={`p-4 rounded-lg flex items-center gap-3 ${
-        isDurationValid ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-      }`}>
-        <span className="text-xl">{isDurationValid ? '✓' : '✗'}</span>
-        <div>
-          <p className="font-medium">
-            时长验证: {formData.template_segments.map((s) => s.duration).join(' + ')} = {totalSegmentDuration.toFixed(2)} 秒
-          </p>
-          {!isDurationValid && (
-            <p className="text-sm mt-1">
-              {durationDiff > 0 ? `还差 ${durationDiff.toFixed(2)} 秒` : `超出 ${Math.abs(durationDiff).toFixed(2)} 秒`}
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   );
 
@@ -719,7 +599,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || !isDurationValid}
+                disabled={isSubmitting}
                 className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isSubmitting ? (

@@ -125,12 +125,12 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
         <div className="grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-1">序号</div>
-          <div className="col-span-3">配置名称</div>
+          <div className="col-span-2">配置名称</div>
           <div className="col-span-1">比例</div>
           <div className="col-span-1">片段数</div>
           <div className="col-span-2">模板时长</div>
           <div className="col-span-2">总时长</div>
-          <div className="col-span-2">操作</div>
+          <div className="col-span-3">操作</div>
         </div>
 
         {configs.length === 0 ? (
@@ -146,7 +146,7 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
               className="grid grid-cols-12 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
             >
               <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
-              <div className="col-span-3">
+              <div className="col-span-2">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-800">{config.name}</span>
                   <span className="px-2 py-0.5 bg-primary text-white text-xs font-semibold rounded uppercase">
@@ -167,13 +167,14 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
                 <span>🎵</span>
                 <span>{config.audio_duration} 秒</span>
               </div>
-              <div className="col-span-2 flex gap-2">
+              <div className="col-span-3 flex gap-2">
                 <button
                   onClick={() => handleExportConfig(config)}
-                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1"
                   title="导出配置"
                 >
-                  📤
+                  <span>📤</span>
+                  <span>导出</span>
                 </button>
                 <button
                   onClick={() => onEdit(config)}
@@ -183,10 +184,11 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
                 </button>
                 <button
                   onClick={() => handleOpenFolder(config.root_folder)}
-                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1"
                   title="打开主目录"
                 >
-                  📂
+                  <span>📂</span>
+                  <span>打开</span>
                 </button>
                 <button
                   onClick={() => onGenerate(config)}
@@ -196,10 +198,11 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
                 </button>
                 <button
                   onClick={() => handleDeleteConfig(config)}
-                  className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
                   title="删除配置"
                 >
-                  🗑️
+                  <span>🗑️</span>
+                  <span>删除</span>
                 </button>
               </div>
             </div>
