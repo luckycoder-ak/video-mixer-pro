@@ -65,8 +65,76 @@ impl VideoConfig {
             return Err("配置名称不能为空".to_string());
         }
 
+        if self.root_folder.trim().is_empty() {
+            return Err("主目录不能为空".to_string());
+        }
+        if !std::path::Path::new(self.root_folder.trim()).is_dir() {
+            return Err(format!("主目录不存在或不是目录: {}", self.root_folder));
+        }
+
+        const ALLOWED_RATIOS: &[&str] = &["9:16", "16:9", "1:1", "4:5"];
+        if !ALLOWED_RATIOS.contains(&self.video_ratio.trim()) {
+            return Err(format!(
+                "不支持的视频比例: {}，允许的值: {}",
+                self.video_ratio,
+                ALLOWED_RATIOS.join(", ")
+            ));
+        }
+
         if self.audio_path.trim().is_empty() {
             return Err("音频文件必须选择".to_string());
+        }
+        if !std::path::Path::new(self.audio_path.trim()).is_file() {
+            return Err(format!("音频文件不存在: {}", self.audio_path));
+        }
+
+        if !self.subtitle_path.trim().is_empty()
+            && !std::path::Path::new(self.subtitle_path.trim()).is_file()
+        {
+            return Err(format!("字幕文件不存在: {}", self.subtitle_path));
+        }
+
+        if self.template_duration <= 0.0 {
+            return Err("模板片段总时长必须大于 0".to_string());
+        }
+
+        if self.segment_count == 0 {
+            return Err("片段数量必须大于 0".to_string());
+        }
+        if self.segment_count != self.template_segments.len() {
+            return Err(format!(
+                "片段数量不一致: segment_count={} 与 template_segments.len()={}",
+                self.segment_count,
+                self.template_segments.len()
+            ));
+        }
+
+        for (idx, seg) in self.template_segments.iter().enumerate() {
+            let expected_index = idx + 1;
+            if seg.segment_index != expected_index {
+                return Err(format!(
+                    "第 {} 个片段的 segment_index 应为 {}，实际为 {}",
+                    expected_index, expected_index, seg.segment_index
+                ));
+            }
+            if seg.duration <= 0.0 {
+                return Err(format!("第 {} 个片段的时长必须大于 0", expected_index));
+            }
+            if seg.source_folder.trim().is_empty() {
+                return Err(format!("第 {} 个片段未选择来源文件夹", expected_index));
+            }
+            if !std::path::Path::new(seg.source_folder.trim()).is_dir() {
+                return Err(format!(
+                    "第 {} 个片段的来源文件夹不存在: {}",
+                    expected_index, seg.source_folder
+                ));
+            }
+        }
+
+        if !self.tutorial_folder.trim().is_empty()
+            && !std::path::Path::new(self.tutorial_folder.trim()).is_dir()
+        {
+            return Err(format!("教程素材文件夹不存在: {}", self.tutorial_folder));
         }
 
         let total_segment_duration: f32 = self
@@ -76,9 +144,9 @@ impl VideoConfig {
             .sum();
 
         let diff = (total_segment_duration - self.template_duration).abs();
-        if diff > 0.1 {
+        if diff > 0.05 {
             return Err(format!(
-                "片段时长之和不等于模板片段总时长: {} != {}",
+                "片段时长之和不等于模板片段总时长: {} != {}（允许误差 0.05 秒）",
                 total_segment_duration, self.template_duration
             ));
         }

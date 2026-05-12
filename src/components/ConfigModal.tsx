@@ -59,34 +59,33 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       return;
     }
 
+    const total = formData.template_duration;
+    const avgDuration = total > 0 ? Math.round((total / count) * 10) / 10 : 0;
     const segments: TemplateSegment[] = [];
-    const avgDuration = Math.floor(formData.template_duration / count);
+    let allocated = 0;
 
     for (let i = 1; i <= count; i++) {
       const existing = formData.template_segments.find((s) => s.segment_index === i);
-      const duration = existing?.duration || avgDuration;
+      const base = existing
+        ? { ...existing }
+        : {
+            segment_index: i,
+            source_folder: '',
+            crop_mode: 'single' as const,
+            duration: avgDuration,
+          };
 
-      if (i === count) {
-        const usedDuration = segments.reduce((sum, s) => sum + s.duration, 0);
-        const remainingDuration = formData.template_duration - usedDuration;
-        segments.push(
-          existing || {
-            segment_index: i,
-            source_folder: '',
-            crop_mode: 'single',
-            duration: remainingDuration > 0 ? remainingDuration : duration,
-          }
-        );
-      } else {
-        segments.push(
-          existing || {
-            segment_index: i,
-            source_folder: '',
-            crop_mode: 'single',
-            duration,
-          }
-        );
+      if (!existing) {
+        if (i === count) {
+          const remaining = Math.round((total - allocated) * 10) / 10;
+          base.duration = remaining > 0 ? remaining : avgDuration;
+        } else {
+          base.duration = avgDuration;
+        }
       }
+
+      allocated += base.duration;
+      segments.push(base);
     }
 
     handleInputChange('template_segments', segments);
@@ -181,7 +180,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   const totalSegmentDuration = formData.template_segments.reduce((sum, s) => sum + s.duration, 0);
   const durationDiff = formData.template_duration - totalSegmentDuration;
-  const isDurationValid = totalSegmentDuration === formData.template_duration;
+  const isDurationValid = Math.abs(durationDiff) <= 0.05;
 
   const validateBasicTab = (): boolean => {
     if (!formData.root_folder) {
@@ -201,7 +200,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
   const validateTemplateTab = (): boolean => {
     if (!isDurationValid) {
-      alert(`片段时长验证失败：当前总时长 ${totalSegmentDuration} 秒，模板片段总时长 ${formData.template_duration} 秒`);
+      alert(`片段时长验证失败：当前总时长 ${totalSegmentDuration.toFixed(2)} 秒，模板片段总时长 ${formData.template_duration} 秒（允许误差 0.05 秒）`);
       return false;
     }
     const hasEmptyFolders = formData.template_segments.some((s) => !s.source_folder);
@@ -255,15 +254,17 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
 
     const segments = [...formData.template_segments];
     if (segments.length > 0 && newDuration > 0) {
-      const avgDuration = Math.floor(newDuration / segments.length);
-      let remainingDuration = newDuration;
+      const count = segments.length;
+      const avgDuration = Math.round((newDuration / count) * 10) / 10;
+      let allocated = 0;
 
-      for (let i = 0; i < segments.length; i++) {
-        if (i === segments.length - 1) {
-          segments[i].duration = remainingDuration;
+      for (let i = 0; i < count; i++) {
+        if (i === count - 1) {
+          const remaining = Math.round((newDuration - allocated) * 10) / 10;
+          segments[i] = { ...segments[i], duration: remaining > 0 ? remaining : avgDuration };
         } else {
-          segments[i].duration = avgDuration;
-          remainingDuration -= avgDuration;
+          segments[i] = { ...segments[i], duration: avgDuration };
+          allocated += avgDuration;
         }
       }
 
@@ -381,6 +382,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             <option value="9:16">9:16 (竖屏)</option>
             <option value="16:9">16:9 (横屏)</option>
             <option value="1:1">1:1 (方形)</option>
+            <option value="4:5">4:5 (竖版社交)</option>
           </select>
         </div>
       </div>
@@ -606,11 +608,11 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         <span className="text-xl">{isDurationValid ? '✓' : '✗'}</span>
         <div>
           <p className="font-medium">
-            时长验证: {formData.template_segments.map((s) => s.duration).join(' + ')} = {totalSegmentDuration} 秒
+            时长验证: {formData.template_segments.map((s) => s.duration).join(' + ')} = {totalSegmentDuration.toFixed(2)} 秒
           </p>
           {!isDurationValid && (
             <p className="text-sm mt-1">
-              {durationDiff > 0 ? `还差 ${durationDiff} 秒` : `超出 ${Math.abs(durationDiff)} 秒`}
+              {durationDiff > 0 ? `还差 ${durationDiff.toFixed(2)} 秒` : `超出 ${Math.abs(durationDiff).toFixed(2)} 秒`}
             </p>
           )}
         </div>

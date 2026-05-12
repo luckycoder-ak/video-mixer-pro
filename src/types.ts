@@ -36,7 +36,9 @@ export interface Task {
   task_name: string;
   total_count: number;
   completed_count: number;
-  status: 'pending' | 'running' | 'completed' | 'paused' | 'error';
+  failed_count: number;
+  failed_videos: string[];
+  status: 'pending' | 'running' | 'completed' | 'paused' | 'error' | 'partial';
   output_folder: string;
   created_at: string;
   started_at: string | null;
