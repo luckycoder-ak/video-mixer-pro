@@ -704,10 +704,18 @@ fn apply_chained_xfade(
     let mut filter_parts: Vec<String> = Vec::new();
     
     for i in 0..segment_files.len() {
-        filter_parts.push(format!(
-            "[{}:v]settb=AVTB,setpts=PTS-STARTPTS,scale={}:{},setsar=sar=1,fps=30,format=yuv420p[v{}]",
-            i, output_width, output_height, i
-        ));
+        if i == 0 {
+            // 第一个片段直接处理为 [v0_out]，这样可以直接用在第一个 xfade 中
+            filter_parts.push(format!(
+                "[{}:v]settb=AVTB,setpts=PTS-STARTPTS,scale={}:{},setsar=sar=1,fps=30,format=yuv420p[v{}_out]",
+                i, output_width, output_height, i
+            ));
+        } else {
+            filter_parts.push(format!(
+                "[{}:v]settb=AVTB,setpts=PTS-STARTPTS,scale={}:{},setsar=sar=1,fps=30,format=yuv420p[v{}]",
+                i, output_width, output_height, i
+            ));
+        }
     }
     
     let mut offset = 0.0;
@@ -724,7 +732,7 @@ fn apply_chained_xfade(
         ));
     }
     
-    let last_idx = segment_files.len() - 1;
+        let last_idx = segment_files.len() - 1;
     let filter_complex_base = format!(
         "{};[v{}_out]format=yuv420p[final_video]",
         filter_parts.join(";"),
