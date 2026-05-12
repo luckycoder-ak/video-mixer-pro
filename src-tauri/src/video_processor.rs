@@ -743,7 +743,7 @@ fn apply_chained_xfade(
         let fade_out_start = (total_duration - 1.0).max(0.0);
         
         let filter_complex = format!(
-            "{}[{}:a]volume=0.8,afade=t=in:ss=0:d=0.5,afade=t=out:st={}:d=1.0[a]",
+            "{};[{}:a]volume=0.8,afade=t=in:ss=0:d=0.5,afade=t=out:st={}:d=1.0[a]",
             filter_complex_base,
             audio_input_index,
             fade_out_start

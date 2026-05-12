@@ -65,6 +65,7 @@ fn main() {
             video_processor::get_tasks,
             video_processor::refresh_tasks_from_disk,
             video_processor::get_task_status,
+            video_processor::get_task,
             video_processor::pause_task,
             video_processor::resume_task,
             video_processor::delete_task,
