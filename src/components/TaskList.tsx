@@ -123,6 +123,13 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             错误
           </span>
         );
+      case 'partial':
+        return (
+          <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-orange-500" />
+            部分完成
+          </span>
+        );
       default:
         return (
           <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 flex items-center gap-2">
@@ -225,7 +232,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   };
 
   const handleMouseEnter = (e: React.MouseEvent, task: Task) => {
-    if (task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error') {
+    if (task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error' || task.status === 'partial') {
       const rect = e.currentTarget.getBoundingClientRect();
       const popupHeight = 400;
       const windowHeight = window.innerHeight;
@@ -311,7 +318,22 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                   <span>🕐</span>
                   <span>{formatDate(task.created_at)}</span>
                 </div>
-                <div className="col-span-2">{getStatusBadge(task.status)}</div>
+                <div className="col-span-2">
+                  {getStatusBadge(task.status)}
+                  {(task.status === 'error' || task.status === 'partial') && task.error_message && (
+                    <div
+                      className="mt-1 text-xs text-red-600 break-all whitespace-pre-wrap leading-tight max-h-20 overflow-y-auto"
+                      title={task.error_message}
+                    >
+                      {task.error_message}
+                    </div>
+                  )}
+                  {task.status === 'partial' && task.failed_count > 0 && (
+                    <p className="text-xs text-orange-600 mt-0.5">
+                      失败 {task.failed_count} 个
+                    </p>
+                  )}
+                </div>
                 <div className="col-span-2">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold font-mono text-gray-700">
@@ -542,6 +564,35 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                     已完成: {hoveredTask.completed_count}/{hoveredTask.total_count} 个视频
                   </div>
                 ) : null}
+
+                {/* 失败视频清单 */}
+                {hoveredTask.failed_videos && hoveredTask.failed_videos.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <h4 className="text-red-700 font-semibold text-xs mb-2 flex items-center gap-1">
+                      <span>❌</span>
+                      <span>失败清单（{hoveredTask.failed_videos.length}）</span>
+                    </h4>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {hoveredTask.failed_videos.map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 break-all whitespace-pre-wrap"
+                        >
+                          {msg}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 顶层 error_message（若存在且未被失败清单覆盖） */}
+                {hoveredTask.error_message && (!hoveredTask.failed_videos || hoveredTask.failed_videos.length === 0) && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 break-all whitespace-pre-wrap">
+                      {hoveredTask.error_message}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center text-gray-500 py-4">

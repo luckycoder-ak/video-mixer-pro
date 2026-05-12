@@ -395,6 +395,70 @@ pub fn select_random_videos(
     Ok(selected)
 }
 
+/**
+ 将 source_folder 路径规范化为 used_per_folder 的 HashMap key。
+ 规则：trim + canonicalize（失败时退化为原始字符串），保证同一目录的不同写法（带空格、相对路径等）映射到同一桶里。
+ */
+fn normalize_folder_key(folder: &str) -> String {
+    let trimmed = folder.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    match std::fs::canonicalize(trimmed) {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) => trimmed.to_string(),
+    }
+}
+
+/**
+ 将教程已用素材集合写回 app_data.json。
+ 仅更新 used_tutorial_videos 字段，其它字段保持文件原值。
+ 失败返回 Err，不阻塞主流程（调用方决定是否仅 warn）。
+ */
+fn persist_tutorial_used(
+    app_data_file: &Arc<RwLock<Option<PathBuf>>>,
+    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
+) -> Result<(), String> {
+    let path_opt = app_data_file
+        .read()
+        .map_err(|e| format!("读取 app_data_file 失败: {}", e))?
+        .clone();
+    let Some(path) = path_opt else {
+        return Err("app_data_file 尚未初始化".to_string());
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    }
+
+    let snapshot: Vec<String> = tutorial_used_global
+        .read()
+        .map_err(|e| format!("读取教程已用集合失败: {}", e))?
+        .iter()
+        .cloned()
+        .collect();
+
+    let mut value: serde_json::Value = if path.exists() {
+        let content = fs::read_to_string(&path).map_err(|e| format!("读取 app_data.json 失败: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if !value.is_object() {
+        value = serde_json::json!({});
+    }
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "used_tutorial_videos".to_string(),
+            serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Array(vec![])),
+        );
+    }
+
+    let content = serde_json::to_string_pretty(&value).map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&path, content).map_err(|e| format!("写入 app_data.json 失败: {}", e))?;
+    Ok(())
+}
+
 pub fn calculate_video_dimensions(ratio: &str) -> (u32, u32) {
     match ratio {
         "9:16" => (1080, 1920),
@@ -446,10 +510,44 @@ fn detect_best_encoder() -> EncoderConfig {
     }).clone()
 }
 
+/**
+ 随机选取一种 xfade 转场类型。
+ 池中包含 fade/dissolve/slide/smooth/circle/zoom/pixelize 等多类风格，
+ wipe 系仅保留 4 种以稀释占比，避免视觉上"全是翻页"的观感。
+ 返回值：ffmpeg xfade 滤镜支持的 transition 名称。
+ */
 pub fn get_random_transition_type() -> String {
     let transitions = vec![
+        // 淡变类（柔和）
         "fade".to_string(),
+        "fadeblack".to_string(),
+        "fadewhite".to_string(),
         "dissolve".to_string(),
+        // 滑动类
+        "slideleft".to_string(),
+        "slideright".to_string(),
+        "slideup".to_string(),
+        "slidedown".to_string(),
+        // 平滑过渡
+        "smoothleft".to_string(),
+        "smoothright".to_string(),
+        "smoothup".to_string(),
+        "smoothdown".to_string(),
+        // 形状类
+        "circleopen".to_string(),
+        "circleclose".to_string(),
+        "circlecrop".to_string(),
+        "rectcrop".to_string(),
+        "radial".to_string(),
+        // 缩放/像素化
+        "zoomin".to_string(),
+        "pixelize".to_string(),
+        // 切片类
+        "hlslice".to_string(),
+        "hrslice".to_string(),
+        "vuslice".to_string(),
+        "vdslice".to_string(),
+        // wipe 系（保留少量以维持多样性）
         "wipeleft".to_string(),
         "wiperight".to_string(),
         "wipeup".to_string(),
@@ -895,6 +993,63 @@ pub fn probe_video_duration(video_path: &str) -> Result<f32, String> {
     }
 }
 
+/**
+ 进程级视频时长缓存，避免同一素材重复 ffprobe。
+ */
+fn duration_cache() -> &'static RwLock<HashMap<String, f32>> {
+    static CACHE: OnceLock<RwLock<HashMap<String, f32>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/**
+ 带缓存的视频时长探测。
+ 参数:
+ - `video_path`: 视频文件绝对路径字符串。
+ 返回:
+ - 成功: 时长（秒）。
+ - 失败: 错误描述（ffprobe 异常或解析失败）。
+ */
+pub fn probe_video_duration_cached(video_path: &str) -> Result<f32, String> {
+    if let Ok(guard) = duration_cache().read() {
+        if let Some(&d) = guard.get(video_path) {
+            return Ok(d);
+        }
+    }
+    let d = probe_video_duration(video_path)?;
+    if let Ok(mut guard) = duration_cache().write() {
+        guard.insert(video_path.to_string(), d);
+    }
+    Ok(d)
+}
+
+/**
+ 按最小时长过滤视频列表：剔除 `duration < min_duration` 的素材，
+ 用于避免片段选片命中后在 ffmpeg `-ss start_offset -t duration` 时产出空视频流。
+
+ 参数:
+ - `videos`: 候选视频路径。
+ - `min_duration`: 要求的最小时长（秒），通常 = segment 起点累计偏移 + 该段截取时长。
+ 返回:
+ - 满足时长要求的视频路径列表，顺序保持不变。
+ 探测失败的素材视为不可用（过滤掉），并打 warn 日志。
+ */
+pub fn filter_videos_by_min_duration(videos: &[PathBuf], min_duration: f32) -> Vec<PathBuf> {
+    videos
+        .iter()
+        .filter(|v| {
+            let p = v.to_string_lossy().to_string();
+            match probe_video_duration_cached(&p) {
+                Ok(d) => d + 0.05 >= min_duration,
+                Err(e) => {
+                    warn!("素材时长探测失败，已跳过: {} ({})", p, e);
+                    false
+                }
+            }
+        })
+        .cloned()
+        .collect()
+}
+
 fn apply_chained_xfade(
     task_id: &str,
     cancel: &Arc<AtomicBool>,
@@ -1051,7 +1206,11 @@ fn process_single_mode(
     subtitle_path: &str,
     output_dir: &PathBuf,
     output_filename: &str,
-    used_global: &mut HashSet<String>,
+    // 每个 source_folder 独立的已用集合；仅保证单次任务内同文件夹不重复选中。
+    used_per_folder: &mut HashMap<String, HashSet<String>>,
+    // 教程素材全局已用集合（持久化）；本视频内挑中的需要立即写入并持久化。
+    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
+    app_data_file: &Arc<RwLock<Option<PathBuf>>>,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
     let temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", Uuid::new_v4()));
@@ -1091,11 +1250,26 @@ fn process_single_mode(
             return Err(err);
         }
 
-        // S6：跨段全局去重，不足直接报错
-        let selected = select_random_videos(&videos, video_count, used_global)
+        // 预过滤时长不足的素材：截取范围是 [start_offset, start_offset + duration]，
+        // 否则 ffmpeg 在 dual/quadrant 的 cell 阶段会产出空视频流，merge 时报 "matches no streams"。
+        let min_duration = segment_offsets[i] + segment.duration;
+        let videos = filter_videos_by_min_duration(&videos, min_duration);
+        if videos.len() < video_count {
+            let err = format!(
+                "片段 {} 需要 {} 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
+                i + 1, video_count, min_duration, videos.len()
+            );
+            push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
+            return Err(err);
+        }
+
+        // S6：仅在同一 source_folder 内去重，跨 folder 互不干扰
+        let folder_key = normalize_folder_key(&segment.source_folder);
+        let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
+        let selected = select_random_videos(&videos, video_count, folder_used)
             .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
         for s in &selected {
-            used_global.insert(s.to_string_lossy().to_string());
+            folder_used.insert(s.to_string_lossy().to_string());
         }
 
         push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Completed, None);
@@ -1127,49 +1301,95 @@ fn process_single_mode(
         segment_files.push(trimmed_segment);
     }
 
-    if !tutorial_folder.is_empty() {
-        let tutorial_videos = get_video_files(tutorial_folder)?;
-        if !tutorial_videos.is_empty() {
-            let tutorial_step_id = format!("video_{}__tutorial", video_index);
-            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
+    // 教程片段：必须配置文件夹；全局去重，用过的素材永不再选；耗尽即报错。
+    if tutorial_folder.trim().is_empty() {
+        let err = "教程素材文件夹未配置".to_string();
+        let tutorial_step_id = format!("video_{}__tutorial", video_index);
+        push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
+        return Err(err);
+    }
 
-            let tutorial_video = &tutorial_videos[0];
-            let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
+    let tutorial_videos = get_video_files(tutorial_folder)?;
+    if tutorial_videos.is_empty() {
+        let err = format!("教程素材文件夹为空: {}", tutorial_folder);
+        let tutorial_step_id = format!("video_{}__tutorial", video_index);
+        push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
+        return Err(err);
+    }
 
-            // S7：教程片段同样对齐 setsar/fps/format
-            let tutorial_scale_filter = format!(
-                "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p",
-                output_width, output_height, output_width, output_height
+    let tutorial_step_id = format!("video_{}__tutorial", video_index);
+    push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
+
+    // 从全局已用集合里过滤出可用的教程素材
+    let tutorial_video = {
+        let used_snapshot: HashSet<String> = tutorial_used_global
+            .read()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        let available: Vec<PathBuf> = tutorial_videos
+            .iter()
+            .filter(|v| !used_snapshot.contains(&v.to_string_lossy().to_string()))
+            .cloned()
+            .collect();
+        if available.is_empty() {
+            let err = format!(
+                "教程素材已全部使用过，请补充新素材到: {}（全局已用 {} 个）",
+                tutorial_folder,
+                used_snapshot.len()
             );
+            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
+            return Err(err);
+        }
+        let mut rng = rand::thread_rng();
+        let idx = rng.gen_range(0..available.len());
+        available[idx].clone()
+    };
 
-            let tutorial_scaled_str = tutorial_scaled.to_string_lossy().to_string();
-            let tutorial_input_str = tutorial_video.to_string_lossy().to_string();
-            let encoder = detect_best_encoder();
-            let num_cpus_str = num_cpus::get().to_string();
+    // 立即登记为已用并持久化，防止后续任务重复选取
+    let tutorial_key = tutorial_video.to_string_lossy().to_string();
+    {
+        if let Ok(mut guard) = tutorial_used_global.write() {
+            guard.insert(tutorial_key.clone());
+        }
+    }
+    if let Err(e) = persist_tutorial_used(app_data_file, tutorial_used_global) {
+        warn!("持久化教程已用素材失败（不影响本次生成）: {}", e);
+    }
 
-            let tutorial_args: Vec<String> = vec![
-                "-hide_banner".to_string(),
-                "-loglevel".to_string(), "error".to_string(),
-                "-i".to_string(), tutorial_input_str,
-                "-an".to_string(),
-                "-vf".to_string(), tutorial_scale_filter,
-                "-c:v".to_string(), encoder.video_codec.to_string(),
-                "-pix_fmt".to_string(), "yuv420p".to_string(),
-                "-threads".to_string(), num_cpus_str,
-                "-y".to_string(),
-                tutorial_scaled_str,
-            ];
+    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
 
-            match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
-                Ok(()) => {
-                    push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Completed, None);
-                    segment_files.push(tutorial_scaled);
-                }
-                Err(e) => {
-                    push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(e.clone()));
-                    return Err(e);
-                }
-            }
+    // S7：教程片段同样对齐 setsar/fps/format
+    let tutorial_scale_filter = format!(
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p",
+        output_width, output_height, output_width, output_height
+    );
+
+    let tutorial_scaled_str = tutorial_scaled.to_string_lossy().to_string();
+    let tutorial_input_str = tutorial_video.to_string_lossy().to_string();
+    let encoder = detect_best_encoder();
+    let num_cpus_str = num_cpus::get().to_string();
+
+    let tutorial_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), tutorial_input_str,
+        "-an".to_string(),
+        "-vf".to_string(), tutorial_scale_filter,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus_str,
+        "-y".to_string(),
+        tutorial_scaled_str,
+    ];
+
+    match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
+        Ok(()) => {
+            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Completed, None);
+            segment_files.push(tutorial_scaled);
+        }
+        Err(e) => {
+            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(e.clone()));
+            return Err(e);
         }
     }
 
@@ -1382,6 +1602,8 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     let task_id = task.id.clone();
     let config_clone = config.clone();
     let output_dir = task_output_dir.clone();
+    let tutorial_used_global = state.used_tutorial_videos.clone();
+    let app_data_file = state.app_data_file.clone();
 
     thread::spawn(move || {
         info!("开始处理任务: id={}", task_id);
@@ -1418,7 +1640,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
         push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Completed, None);
 
-        let mut used_global: HashSet<String> = HashSet::new();
+        let mut used_per_folder: HashMap<String, HashSet<String>> = HashMap::new();
 
         for i in 0..count {
             // 暂停等待
@@ -1459,7 +1681,9 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 &config_clone.subtitle_path,
                 &output_dir,
                 &output_filename,
-                &mut used_global,
+                &mut used_per_folder,
+                &tutorial_used_global,
+                &app_data_file,
             ) {
                 Ok(()) => {
                     info!("视频 {} 处理成功", i + 1);
@@ -1509,10 +1733,20 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                         t.status = TaskStatus::Completed;
                     } else if t.completed_count == 0 {
                         t.status = TaskStatus::Error;
-                        t.error_message = Some(format!("全部 {} 个视频处理失败", t.failed_count));
+                        let detail = t.failed_videos.first().cloned().unwrap_or_default();
+                        t.error_message = Some(if detail.is_empty() {
+                            format!("全部 {} 个视频处理失败", t.failed_count)
+                        } else {
+                            format!("全部 {} 个视频处理失败；首条失败: {}", t.failed_count, detail)
+                        });
                     } else {
                         t.status = TaskStatus::Partial;
-                        t.error_message = Some(format!("成功 {} / 失败 {}", t.completed_count, t.failed_count));
+                        let detail = t.failed_videos.first().cloned().unwrap_or_default();
+                        t.error_message = Some(if detail.is_empty() {
+                            format!("成功 {} / 失败 {}", t.completed_count, t.failed_count)
+                        } else {
+                            format!("成功 {} / 失败 {}；首条失败: {}", t.completed_count, t.failed_count, detail)
+                        });
                     }
                     break;
                 }
@@ -1630,9 +1864,11 @@ pub fn open_folder(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chained_xfade_filter_complex, compute_segment_offsets,
-        resolve_task_output_dir, sanitize_task_name,
+        build_chained_xfade_filter_complex, compute_segment_offsets, duration_cache,
+        filter_videos_by_min_duration, get_random_transition_type, resolve_task_output_dir,
+        sanitize_task_name,
     };
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     #[test]
@@ -1725,5 +1961,57 @@ mod tests {
         assert_eq!(sanitize_task_name("  hello  "), "hello");
         assert_eq!(sanitize_task_name(""), "task");
         assert_eq!(sanitize_task_name("\t\n"), "task");
+    }
+
+    /// 转场池扩大后，wipe 系占比应被显著稀释（≤ 1/5），且至少覆盖 5 类风格。
+    #[test]
+    fn get_random_transition_type_should_have_diversified_pool() {
+        let mut seen: HashSet<String> = HashSet::new();
+        for _ in 0..2000 {
+            seen.insert(get_random_transition_type());
+        }
+
+        // 至少应见过若干种非 wipe 风格转场
+        let non_wipe_samples = ["fade", "dissolve", "slideleft", "smoothleft", "circleopen", "zoomin", "pixelize"];
+        let hit = non_wipe_samples
+            .iter()
+            .filter(|s| seen.contains(**s))
+            .count();
+        assert!(hit >= 5, "非 wipe 风格覆盖不足: {:?}", seen);
+
+        // wipe 系命中数不能超过总池子的一半
+        let wipe = ["wipeleft", "wiperight", "wipeup", "wipedown"];
+        let wipe_hit = wipe.iter().filter(|s| seen.contains(**s)).count();
+        assert!(wipe_hit <= 4);
+        assert!(seen.len() >= 10, "转场池规模不足: {}", seen.len());
+    }
+
+    /// 通过预热进程级时长缓存，验证 filter_videos_by_min_duration 能剔除时长不足的素材。
+    /// 这里不真正调用 ffprobe，直接往 duration_cache 写入伪造时长。
+    #[test]
+    fn filter_videos_by_min_duration_should_drop_short_videos() {
+        let long_path = PathBuf::from("/tmp/__test_long_video_for_filter.mp4");
+        let short_path = PathBuf::from("/tmp/__test_short_video_for_filter.mp4");
+
+        {
+            let mut guard = duration_cache().write().unwrap();
+            guard.insert(long_path.to_string_lossy().to_string(), 60.0);
+            guard.insert(short_path.to_string_lossy().to_string(), 5.0);
+        }
+
+        let videos = vec![long_path.clone(), short_path.clone()];
+        let kept = filter_videos_by_min_duration(&videos, 30.0);
+
+        assert_eq!(kept, vec![long_path.clone()]);
+
+        // 边界：恰好等于 min_duration（含 0.05 容差）也应保留
+        let kept_edge = filter_videos_by_min_duration(&videos, 5.0);
+        assert!(kept_edge.contains(&short_path));
+        assert!(kept_edge.contains(&long_path));
+
+        // 清理缓存避免影响其他测试
+        let mut guard = duration_cache().write().unwrap();
+        guard.remove(&long_path.to_string_lossy().to_string());
+        guard.remove(&short_path.to_string_lossy().to_string());
     }
 }

@@ -9,7 +9,11 @@ use log::{info, error};
 pub struct AppData {
     pub configs: Vec<super::config::VideoConfig>,
     pub tasks: Vec<super::video_processor::Task>,
+    #[serde(default)]
     pub usage_records: HashMap<String, UsageRecord>,
+    /// 教程素材全局已用记录：绝对路径字符串集合，跨任务持久化，永不复用。
+    #[serde(default)]
+    pub used_tutorial_videos: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,28 +108,43 @@ pub fn save_configs(
 
     info!("Saving {} configs and {} tasks to {:?}", configs.len(), tasks.len(), data_file);
 
-    let usage_records = if data_file.exists() {
+    let (usage_records, used_tutorial_videos) = if data_file.exists() {
         if let Ok(content) = fs::read_to_string(&data_file) {
             if let Ok(existing_data) = serde_json::from_str::<AppData>(&content) {
-                info!("Preserving {} existing usage records", existing_data.usage_records.len());
-                existing_data.usage_records
+                info!("Preserving {} existing usage records and {} used tutorial videos",
+                    existing_data.usage_records.len(),
+                    existing_data.used_tutorial_videos.len());
+                (existing_data.usage_records, existing_data.used_tutorial_videos)
             } else {
                 info!("Failed to parse existing usage records, starting fresh");
-                HashMap::new()
+                (HashMap::new(), Vec::new())
             }
         } else {
             info!("Failed to read existing data file, starting fresh");
-            HashMap::new()
+            (HashMap::new(), Vec::new())
         }
     } else {
         info!("No existing data file found, starting fresh");
-        HashMap::new()
+        (HashMap::new(), Vec::new())
+    };
+
+    // 与运行中内存里的教程已用集合合并（如果调用方已经在内存中追加了新条目）
+    let app_state = app.state::<crate::AppState>();
+    let merged_used_tutorial: Vec<String> = {
+        let mut set: std::collections::HashSet<String> = used_tutorial_videos.into_iter().collect();
+        if let Ok(in_memory) = app_state.used_tutorial_videos.read() {
+            for v in in_memory.iter() {
+                set.insert(v.clone());
+            }
+        }
+        set.into_iter().collect()
     };
 
     let data = AppData {
         configs,
         tasks,
         usage_records,
+        used_tutorial_videos: merged_used_tutorial,
     };
 
     let content = serde_json::to_string_pretty(&data).map_err(|e| {
