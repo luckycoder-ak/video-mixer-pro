@@ -1065,13 +1065,13 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         info!("开始处理任务: id={}", task_id);
         
         {
-            let mut tasks = tasks_clone.write().map_err(|e| {
-                error!("更新任务状态失败: {}", e);
-                e.to_string()
-            });
-            if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                t.status = TaskStatus::Running;
-                t.started_at = Some(chrono::Utc::now());
+            let mut tasks = tasks_clone.write().unwrap();
+            for t in tasks.iter_mut() {
+                if t.id == task_id {
+                    t.status = TaskStatus::Running;
+                    t.started_at = Some(chrono::Utc::now());
+                    break;
+                }
             }
         }
         
@@ -1079,10 +1079,13 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         if !output_dir.exists() {
             if let Err(e) = fs::create_dir_all(&output_dir) {
                 error!("创建输出目录失败: {}", e);
-                let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
-                if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                    t.status = TaskStatus::Error;
-                    t.error_message = Some(format!("创建输出目录失败: {}", e));
+                let mut tasks = tasks_clone.write().unwrap();
+                for t in tasks.iter_mut() {
+                    if t.id == task_id {
+                        t.status = TaskStatus::Error;
+                        t.error_message = Some(format!("创建输出目录失败: {}", e));
+                        break;
+                    }
                 }
                 return;
             }
@@ -1092,9 +1095,12 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             info!("处理第 {} 个视频，共 {} 个", i + 1, count);
             
             {
-                let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
-                if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                    t.current_video = i + 1;
+                let mut tasks = tasks_clone.write().unwrap();
+                for t in tasks.iter_mut() {
+                    if t.id == task_id {
+                        t.current_video = i + 1;
+                        break;
+                    }
                 }
             }
             
@@ -1113,28 +1119,37 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 Ok(()) => {
                     info!("视频 {} 处理成功", i + 1);
                     
-                    let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
-                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.completed_count += 1;
+                    let mut tasks = tasks_clone.write().unwrap();
+                    for t in tasks.iter_mut() {
+                        if t.id == task_id {
+                            t.completed_count += 1;
+                            break;
+                        }
                     }
                 }
                 Err(e) => {
                     error!("视频 {} 处理失败: {}", i + 1, e);
                     
-                    let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
-                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.status = TaskStatus::Error;
-                        t.error_message = Some(format!("视频 {} 处理失败: {}", i + 1, e));
+                    let mut tasks = tasks_clone.write().unwrap();
+                    for t in tasks.iter_mut() {
+                        if t.id == task_id {
+                            t.status = TaskStatus::Error;
+                            t.error_message = Some(format!("视频 {} 处理失败: {}", i + 1, e));
+                            break;
+                        }
                     }
                     return;
                 }
             }
         }
         
-        let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
-        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-            t.status = TaskStatus::Completed;
-            t.completed_at = Some(chrono::Utc::now());
+        let mut tasks = tasks_clone.write().unwrap();
+        for t in tasks.iter_mut() {
+            if t.id == task_id {
+                t.status = TaskStatus::Completed;
+                t.completed_at = Some(chrono::Utc::now());
+                break;
+            }
         }
         
         info!("任务 {} 全部完成", task_id);
