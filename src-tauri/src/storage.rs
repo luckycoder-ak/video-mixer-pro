@@ -104,10 +104,28 @@ pub fn save_configs(
 
     info!("Saving {} configs and {} tasks to {:?}", configs.len(), tasks.len(), data_file);
 
+    let usage_records = if data_file.exists() {
+        if let Ok(content) = fs::read_to_string(&data_file) {
+            if let Ok(existing_data) = serde_json::from_str::<AppData>(&content) {
+                info!("Preserving {} existing usage records", existing_data.usage_records.len());
+                existing_data.usage_records
+            } else {
+                info!("Failed to parse existing usage records, starting fresh");
+                HashMap::new()
+            }
+        } else {
+            info!("Failed to read existing data file, starting fresh");
+            HashMap::new()
+        }
+    } else {
+        info!("No existing data file found, starting fresh");
+        HashMap::new()
+    };
+
     let data = AppData {
         configs,
         tasks,
-        usage_records: HashMap::new(),
+        usage_records,
     };
 
     let content = serde_json::to_string_pretty(&data).map_err(|e| {
