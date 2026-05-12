@@ -74,9 +74,10 @@ pub struct Task {
 
 impl Task {
     pub fn new(config_name: String, total_count: usize) -> Self {
-        let timestamp_ms = Utc::now().timestamp_millis();
+        // 使用更友好的日期时间格式: YYYY-MM-DD_HH-MM-SS
+        let timestamp = Utc::now().format("%Y-%m-%d_%H-%M-%S").to_string();
         let safe_name = sanitize_task_name(&config_name);
-        let task_name = format!("{}-{}", safe_name, timestamp_ms);
+        let task_name = format!("{}_{}", safe_name, timestamp);
         Task {
             id: Uuid::new_v4().to_string(),
             name: config_name.clone(),
@@ -1764,10 +1765,11 @@ fn add_subtitles(
 
 fn escape_ffmpeg_filter(path: &str) -> String {
     // FFmpeg 滤镜中的路径转义规则：
-    // 1. 反斜杠需要转义为双反斜杠
-    // 2. 单引号在单引号字符串内部不需要转义（外部的单引号已经包裹整个路径）
-    // 3. 冒号是选项分隔符，路径内的冒号不需要转义（macOS/Linux 路径不含冒号）
-    path.replace("\\", "\\\\")
+    // 在单引号字符串内部：
+    // 1. 单引号需要用两个单引号转义（'' 表示一个单引号）
+    // 2. 反斜杠不需要转义（在单引号内无特殊含义）
+    // 3. 冒号是选项分隔符，但在单引号内不需要转义
+    path.replace("'", "''")
 }
 
 /**

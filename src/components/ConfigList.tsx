@@ -161,7 +161,7 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
               </div>
               <div className="col-span-2 text-gray-600 flex items-center gap-1">
                 <span>⏱️</span>
-                <span>{config.template_duration} 秒</span>
+                <span>{config.template_segments.reduce((sum, seg) => sum + seg.duration, 0) - (config.segment_count - 1) * 0.25} 秒</span>
               </div>
               <div className="col-span-2 text-gray-600 flex items-center gap-1">
                 <span>🎵</span>
