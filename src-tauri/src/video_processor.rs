@@ -8,7 +8,6 @@ use std::thread;
 use log::{error, info, warn};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -69,11 +68,12 @@ pub struct Task {
 impl Task {
     pub fn new(config_name: String, total_count: usize) -> Self {
         let timestamp = Utc::now().timestamp();
+        let task_name = format!("{}-{}", config_name, timestamp);
         Task {
             id: Uuid::new_v4().to_string(),
-            name: config_name,
+            name: config_name.clone(),
             config_id: String::new(),
-            task_name: format!("{}-{}", config_name, timestamp),
+            task_name,
             total_count,
             completed_count: 0,
             status: TaskStatus::Pending,
@@ -150,14 +150,13 @@ pub fn select_random_videos(
     let mut indices: Vec<usize> = (0..available.len()).collect();
     let mut rng = rand::thread_rng();
     
-    for i in 0..actual_count {
-        if i < indices.len() {
-            let random_index = rng.gen_range(0..indices.len());
-            let video_index = indices.remove(random_index);
-            selected.push(available[video_index].clone());
-        } else {
+    for _ in 0..actual_count {
+        if indices.is_empty() {
             break;
         }
+        let random_index = rng.gen_range(0..indices.len());
+        let video_index = indices.remove(random_index);
+        selected.push(available[video_index].clone());
     }
 
     Ok(selected)
@@ -180,7 +179,7 @@ pub struct EncoderConfig {
     pub use_hw_accel: bool,
 }
 
-fn detect_best_encoder() -> &'static EncoderConfig {
+fn detect_best_encoder() -> EncoderConfig {
     static ENCODER: OnceLock<EncoderConfig> = OnceLock::new();
     
     ENCODER.get_or_init(|| {
@@ -194,28 +193,28 @@ fn detect_best_encoder() -> &'static EncoderConfig {
                 
                 if stdout.contains("h264_nvenc") {
                     info!("使用 NVIDIA GPU 加速编码器");
-                    &EncoderConfig {
+                    EncoderConfig {
                         video_codec: "h264_nvenc",
                         audio_codec: "aac",
                         use_hw_accel: true,
                     }
                 } else if stdout.contains("h264_vaapi") {
                     info!("使用 VAAPI 硬件加速编码器");
-                    &EncoderConfig {
+                    EncoderConfig {
                         video_codec: "h264_vaapi",
                         audio_codec: "aac",
                         use_hw_accel: true,
                     }
                 } else if stdout.contains("h264_qsv") {
                     info!("使用 Intel QSV 硬件加速编码器");
-                    &EncoderConfig {
+                    EncoderConfig {
                         video_codec: "h264_qsv",
                         audio_codec: "aac",
                         use_hw_accel: true,
                     }
                 } else {
                     info!("使用软件编码器 (libx264)");
-                    &EncoderConfig {
+                    EncoderConfig {
                         video_codec: "libx264",
                         audio_codec: "aac",
                         use_hw_accel: false,
@@ -224,14 +223,14 @@ fn detect_best_encoder() -> &'static EncoderConfig {
             }
             Err(e) => {
                 warn!("检测编码器失败: {}, 使用默认软件编码器", e);
-                &EncoderConfig {
+                EncoderConfig {
                     video_codec: "libx264",
                     audio_codec: "aac",
                     use_hw_accel: false,
                 }
             }
         }
-    })
+    }).clone()
 }
 
 pub fn get_random_transition_type() -> String {
@@ -257,14 +256,15 @@ fn trim_segment(
 ) -> Result<(), String> {
     let input_str = input.to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
-    let encoder = detect_best_encoder();
+    let start_str = start.to_string();
+    let duration_str = duration.to_string();
     
     let args: Vec<&str> = vec![
         "-hide_banner",
         "-loglevel", "error",
-        "-ss", &start.to_string(),
+        "-ss", &start_str,
         "-i", &input_str,
-        "-t", &duration.to_string(),
+        "-t", &duration_str,
         "-c", "copy",
         "-y", &output_str,
     ];
@@ -285,13 +285,13 @@ fn create_transition_effect(
     let output_str = output.to_string_lossy().to_string();
     
     let encoder = detect_best_encoder();
+    let duration_str = duration.to_string();
+    let num_cpus = num_cpus::get().to_string();
     
     let filter_complex = format!(
         "[0:v]settb=AVTB,setpts=PTS-STARTPTS[v0];[1:v]settb=AVTB,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=transition={}:duration={}:offset=0[final]",
-        transition_type, duration
+        transition_type, duration_str
     );
-    
-    let num_cpus = num_cpus::get().to_string();
     
     let args: Vec<&str> = vec![
         "-hide_banner",
@@ -341,13 +341,12 @@ fn process_single_mode_segment(
     let output_str = output.to_string_lossy().to_string();
     
     let encoder = detect_best_encoder();
+    let num_cpus = num_cpus::get().to_string();
     
     let filter_str = format!(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
         output_width, output_height, output_width, output_height
     );
-    
-    let num_cpus = num_cpus::get().to_string();
     
     let args: Vec<&str> = vec![
         "-hide_banner",
@@ -372,11 +371,8 @@ fn process_dual_mode_optimized(
     output_width: u32,
     output_height: u32,
 ) -> Result<(), String> {
-    let video = &videos[0];
-    let input1_str = video.to_string_lossy().to_string();
-    
-    let video = &videos[1];
-    let input2_str = video.to_string_lossy().to_string();
+    let input1_str = videos[0].to_string_lossy().to_string();
+    let input2_str = videos[1].to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
     
     let temp_dir = std::env::temp_dir();
@@ -400,34 +396,36 @@ fn process_dual_mode_optimized(
         half_width, output_height, half_width, output_height
     );
     
-    let left_args: Vec<&str> = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input1_str,
-        "-vf", &left_scale_filter,
-        "-c:v", encoder.video_codec,
-        "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus,
-        "-y", &left_scaled_str,
+    let left_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input1_str,
+        "-vf".to_string(), left_scale_filter,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(),
+        "-y".to_string(),
+        left_scaled_str.clone(),
     ];
     
-    let right_args: Vec<&str> = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input2_str,
-        "-vf", &right_scale_filter,
-        "-c:v", encoder.video_codec,
-        "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus,
-        "-y", &right_scaled_str,
+    let right_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input2_str,
+        "-vf".to_string(), right_scale_filter,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(),
+        "-y".to_string(),
+        right_scaled_str.clone(),
     ];
     
     let left_handle = thread::spawn(move || {
-        run_ffmpeg_fast(&left_args)
+        run_ffmpeg_fast_str(&left_args)
     });
     
     let right_handle = thread::spawn(move || {
-        run_ffmpeg_fast(&right_args)
+        run_ffmpeg_fast_str(&right_args)
     });
     
     let left_result = left_handle.join().map_err(|e| format!("线程 {} 合并失败: {:?}", "left", e));
@@ -437,7 +435,7 @@ fn process_dual_mode_optimized(
         (Ok(Ok(())), Ok(Ok(()))) => {
             info!("双视频片段处理成功");
         }
-        (Ok(Err(e)), Ok(Ok(()))) => {
+        (Ok(Err(e)), Ok(Ok(()))) | (Ok(Err(e)), Ok(Err(_))) => {
             error!("左视频处理失败: {}", e);
             return Err(format!("左视频处理失败: {}", e));
         }
@@ -455,26 +453,23 @@ fn process_dual_mode_optimized(
         }
     }
     
-    let output_str = output.to_string_lossy().to_string();
+    let merge_filter = "[0:v][1:v]hstack=inputs=2[out]".to_string();
     
-    let merge_filter = format!(
-        "[0:v][1:v]hstack=inputs=2[out]",
-    );
-    
-    let merge_args: Vec<&str> = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &left_scaled_str,
-        "-i", &right_scaled_str,
-        "-filter_complex", &merge_filter,
-        "-map", "[out]",
-        "-c:v", encoder.video_codec,
-        "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus,
-        "-y", &output_str,
+    let merge_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), left_scaled_str,
+        "-i".to_string(), right_scaled_str,
+        "-filter_complex".to_string(), merge_filter,
+        "-map".to_string(), "[out]".to_string(),
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus,
+        "-y".to_string(),
+        output_str,
     ];
     
-    run_ffmpeg_fast(&merge_args)?;
+    run_ffmpeg_fast_str(&merge_args)?;
     
     let _ = fs::remove_file(&left_scaled);
     let _ = fs::remove_file(&right_scaled);
@@ -508,47 +503,44 @@ fn process_quadrant_mode_optimized(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black",
         half_width, half_height, half_width, half_height
     );
-    let tr_filter = tl_filter.clone();
-    let bl_filter = tl_filter.clone();
-    let br_filter = tl_filter.clone();
     
     let tl_input = videos[0].to_string_lossy().to_string();
     let tr_input = videos[1].to_string_lossy().to_string();
     let bl_input = videos[2].to_string_lossy().to_string();
     let br_input = videos[3].to_string_lossy().to_string();
     
-    let tl_args: Vec<&str> = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &tl_input, "-vf", &tl_filter,
-        "-c:v", encoder.video_codec, "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus, "-y", &tl_scaled_str,
+    let tl_args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), tl_input, "-vf".to_string(), tl_filter.clone(),
+        "-c:v".to_string(), encoder.video_codec.to_string(), "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(), "-y".to_string(), tl_scaled_str.clone(),
     ];
     
-    let tr_args: Vec<&str> = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &tr_input, "-vf", &tr_filter,
-        "-c:v", encoder.video_codec, "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus, "-y", &tr_scaled_str,
+    let tr_args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), tr_input, "-vf".to_string(), tl_filter.clone(),
+        "-c:v".to_string(), encoder.video_codec.to_string(), "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(), "-y".to_string(), tr_scaled_str.clone(),
     ];
     
-    let bl_args: Vec<&str> = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &bl_input, "-vf", &bl_filter,
-        "-c:v", encoder.video_codec, "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus, "-y", &bl_scaled_str,
+    let bl_args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), bl_input, "-vf".to_string(), tl_filter.clone(),
+        "-c:v".to_string(), encoder.video_codec.to_string(), "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(), "-y".to_string(), bl_scaled_str.clone(),
     ];
     
-    let br_args: Vec<&str> = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &br_input, "-vf", &br_filter,
-        "-c:v", encoder.video_codec, "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus, "-y", &br_scaled_str,
+    let br_args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), br_input, "-vf".to_string(), tl_filter,
+        "-c:v".to_string(), encoder.video_codec.to_string(), "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus.clone(), "-y".to_string(), br_scaled_str.clone(),
     ];
     
-    let handle1 = thread::spawn(move || run_ffmpeg_fast(&tl_args));
-    let handle2 = thread::spawn(move || run_ffmpeg_fast(&tr_args));
-    let handle3 = thread::spawn(move || run_ffmpeg_fast(&bl_args));
-    let handle4 = thread::spawn(move || run_ffmpeg_fast(&br_args));
+    let handle1 = thread::spawn(move || run_ffmpeg_fast_str(&tl_args));
+    let handle2 = thread::spawn(move || run_ffmpeg_fast_str(&tr_args));
+    let handle3 = thread::spawn(move || run_ffmpeg_fast_str(&bl_args));
+    let handle4 = thread::spawn(move || run_ffmpeg_fast_str(&br_args));
     
     let handle1_result = handle1.join().map_err(|e| format!("线程 {} 合并失败: {:?}", "top-left", e));
     let handle2_result = handle2.join().map_err(|e| format!("线程 {} 合并失败: {:?}", "top-right", e));
@@ -591,25 +583,29 @@ fn process_quadrant_mode_optimized(
             error!("右下视频处理失败: {}", e);
             return Err(format!("右下视频处理失败: {}", e));
         }
+        _ => {
+            error!("未知线程错误");
+            return Err("未知线程错误".to_string());
+        }
     }
     
     let output_str = output.to_string_lossy().to_string();
+    let merge_filter = "[0:v][1:v]hstack[top];[2:v][3:v]hstack[bottom];[top][bottom]vstack=inputs=2[out]".to_string();
     
-    let merge_filter = "[0:v][1:v]hstack[top];[2:v][3:v]hstack[bottom];[top][bottom]vstack=inputs=2[out]";
-    
-    let merge_args: Vec<&str> = vec![
-        "-hide_banner", "-loglevel", "error",
-        "-i", &tl_scaled_str, "-i", &tr_scaled_str,
-        "-i", &bl_scaled_str, "-i", &br_scaled_str,
-        "-filter_complex", merge_filter,
-        "-map", "[out]",
-        "-c:v", encoder.video_codec,
-        "-pix_fmt", "yuv420p",
-        "-threads", &num_cpus,
-        "-y", &output_str,
+    let merge_args: Vec<String> = vec![
+        "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), tl_scaled_str, "-i".to_string(), tr_scaled_str,
+        "-i".to_string(), bl_scaled_str, "-i".to_string(), br_scaled_str,
+        "-filter_complex".to_string(), merge_filter,
+        "-map".to_string(), "[out]".to_string(),
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus,
+        "-y".to_string(),
+        output_str,
     ];
     
-    run_ffmpeg_fast(&merge_args)?;
+    run_ffmpeg_fast_str(&merge_args)?;
     
     let _ = fs::remove_file(&tl_scaled);
     let _ = fs::remove_file(&tr_scaled);
@@ -622,6 +618,20 @@ fn process_quadrant_mode_optimized(
 pub fn run_ffmpeg_fast(args: &[&str]) -> Result<(), String> {
     let output = Command::new("ffmpeg")
         .args(args)
+        .output()
+        .map_err(|e| format!("执行 FFmpeg 失败: {}", e))?;
+    
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("FFmpeg 执行失败: {}", stderr))
+    }
+}
+
+fn run_ffmpeg_fast_str(args: &[String]) -> Result<(), String> {
+    let output = Command::new("ffmpeg")
+        .args(args.iter().map(|s| s.as_str()).collect::<Vec<&str>>())
         .output()
         .map_err(|e| format!("执行 FFmpeg 失败: {}", e))?;
     
@@ -687,8 +697,9 @@ fn apply_chained_xfade(
         args.extend(["-i".to_string(), segment.to_string_lossy().to_string()]);
     }
     
-    let num_cpus = num_cpus::get().to_string();
     let output_str = output.to_string_lossy().to_string();
+    let num_cpus = num_cpus::get().to_string();
+    let transition_duration_str = transition_duration.to_string();
     
     let mut filter_parts: Vec<String> = Vec::new();
     
@@ -709,7 +720,7 @@ fn apply_chained_xfade(
         
         filter_parts.push(format!(
             "[v{}][v{}]xfade=transition={}:duration={}:offset={}[v{}_out]",
-            i - 1, i, transition_types[i - 1], transition_duration, offset, i
+            i - 1, i, transition_types[i - 1], transition_duration_str, offset, i
         ));
     }
     
@@ -720,6 +731,8 @@ fn apply_chained_xfade(
         last_idx
     );
     
+    let encoder = detect_best_encoder();
+    
     if !background_audio_path.is_empty() {
         args.extend(["-i".to_string(), background_audio_path.to_string()]);
         
@@ -727,20 +740,21 @@ fn apply_chained_xfade(
             - (transition_duration * (segment_files.len() - 1) as f32);
         
         let audio_input_index = segment_files.len();
+        let fade_out_start = (total_duration - 1.0).max(0.0);
         
         let filter_complex = format!(
             "{}[{}:a]volume=0.8,afade=t=in:ss=0:d=0.5,afade=t=out:st={}:d=1.0[a]",
             filter_complex_base,
             audio_input_index,
-            (total_duration - 1.0).max(0.0)
+            fade_out_start
         );
         
         args.extend([
             "-filter_complex".to_string(), filter_complex,
             "-map".to_string(), "[final_video]".to_string(),
             "-map".to_string(), "[a]".to_string(),
-            "-c:v".to_string(), encoder.video_codec.clone(),
-            "-c:a".to_string(), encoder.audio_codec.clone(),
+            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:a".to_string(), encoder.audio_codec.to_string(),
             "-pix_fmt".to_string(), "yuv420p".to_string(),
             "-movflags".to_string(), "+faststart".to_string(),
             "-threads".to_string(), num_cpus,
@@ -751,7 +765,7 @@ fn apply_chained_xfade(
         args.extend([
             "-filter_complex".to_string(), filter_complex_base,
             "-map".to_string(), "[final_video]".to_string(),
-            "-c:v".to_string(), encoder.video_codec.clone(),
+            "-c:v".to_string(), encoder.video_codec.to_string(),
             "-an".to_string(),
             "-pix_fmt".to_string(), "yuv420p".to_string(),
             "-movflags".to_string(), "+faststart".to_string(),
@@ -770,7 +784,7 @@ fn apply_chained_xfade(
 }
 
 fn process_single_mode(
-    template_segments: &[super::config::TemplateSegment],
+    template_segments: &[config::TemplateSegment],
     tutorial_folder: &str,
     video_ratio: &str,
     audio_path: &str,
@@ -785,7 +799,6 @@ fn process_single_mode(
     let _temp_dir_guard = TempDirGuard(temp_dir.clone());
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let mut start_time: f32 = 0.0;
     let transition_duration: f32 = 0.5;
 
     for (i, segment) in template_segments.iter().enumerate() {
@@ -795,9 +808,9 @@ fn process_single_mode(
         }
 
         let video_count = match segment.crop_mode {
-            super::config::CropMode::Single => 1,
-            super::config::CropMode::Dual => 2,
-            super::config::CropMode::Quadrant => 4,
+            config::CropMode::Single => 1,
+            config::CropMode::Dual => 2,
+            config::CropMode::Quadrant => 4,
         };
 
         if videos.len() < video_count {
@@ -806,29 +819,18 @@ fn process_single_mode(
 
         let selected = select_random_videos(&videos, video_count, &HashSet::new())?;
         
-        let actual_duration = if i < template_segments.len() - 1 {
-            (segment.duration - transition_duration).max(0.5)
-        } else {
-            segment.duration
-        };
-        
         let trimmed_segment = temp_dir.join(format!("segment_{}.mp4", i));
         
-        if selected.len() == 1 {
-            process_segment(&selected, &trimmed_segment, &segment.crop_mode, (output_width, output_height))?;
-        } else {
-            process_segment(&selected, &trimmed_segment, &segment.crop_mode, (output_width, output_height))?;
-        }
+        process_segment(&selected, &trimmed_segment, &segment.crop_mode, (output_width, output_height))?;
         
         segment_files.push(trimmed_segment);
-        start_time += actual_duration;
     }
 
     if !tutorial_folder.is_empty() {
         let tutorial_videos = get_video_files(tutorial_folder)?;
         if !tutorial_videos.is_empty() {
             let tutorial_video = &tutorial_videos[0];
-            let tutorial_scaled = temp_dir.join(format!("tutorial_scaled.mp4"));
+            let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
             
             let tutorial_scale_filter = format!(
                 "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,fps=30",
@@ -840,18 +842,19 @@ fn process_single_mode(
             let encoder = detect_best_encoder();
             let num_cpus = num_cpus::get().to_string();
             
-            let tutorial_args: Vec<&str> = vec![
-                "-hide_banner",
-                "-loglevel", "error",
-                "-i", &tutorial_input_str,
-                "-vf", &tutorial_scale_filter,
-                "-c:v", encoder.video_codec,
-                "-pix_fmt", "yuv420p",
-                "-threads", &num_cpus,
-                "-y", &tutorial_scaled_str,
+            let tutorial_args: Vec<String> = vec![
+                "-hide_banner".to_string(),
+                "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), tutorial_input_str,
+                "-vf".to_string(), tutorial_scale_filter,
+                "-c:v".to_string(), encoder.video_codec.to_string(),
+                "-pix_fmt".to_string(), "yuv420p".to_string(),
+                "-threads".to_string(), num_cpus,
+                "-y".to_string(),
+                tutorial_scaled_str,
             ];
             
-            run_ffmpeg_fast(&tutorial_args)?;
+            run_ffmpeg_fast_str(&tutorial_args)?;
             segment_files.insert(0, tutorial_scaled);
         }
     }
@@ -954,11 +957,12 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
     
     let is_ass_format = subtitle_ext == "ass" || subtitle_ext == "ssa";
     
+    let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
     let filter_str = if is_ass_format {
-        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_path.to_string_lossy());
+        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
         format!("ass='{}'", escaped_path)
     } else {
-        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_path.to_string_lossy());
+        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
         format!("subtitles='{}':si=0", escaped_path)
     };
     
@@ -966,19 +970,20 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
         if is_ass_format { "ASS" } else { "SRT" }, 
         filter_str);
     
-    let mut args: Vec<&str> = vec![
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", &input_str,
-        "-vf", &filter_str,
-        "-c:v", &encoder.video_codec,
-        "-c:a", "copy",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        "-y", &output_str,
+    let args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input_str,
+        "-vf".to_string(), filter_str,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-c:a".to_string(), "copy".to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-y".to_string(),
+        output_str,
     ];
     
-    match run_ffmpeg_fast(&args) {
+    match run_ffmpeg_fast_str(&args) {
         Ok(_) => {
             info!("字幕添加成功: {:?}", output_path);
         }
@@ -987,24 +992,25 @@ fn add_subtitles(input_path: &PathBuf, subtitle_path: &str, output_path: &PathBu
             error!("尝试备用方案...");
             
             let backup_filter = if is_ass_format {
-                format!("ass={}", temp_subtitle_path.to_string_lossy())
+                format!("ass={}", temp_subtitle_str)
             } else {
-                format!("subtitles={}:si=0", temp_subtitle_path.to_string_lossy())
+                format!("subtitles={}:si=0", temp_subtitle_str)
             };
             
-            let mut backup_args: Vec<&str> = vec![
-                "-hide_banner",
-                "-loglevel", "error",
-                "-i", &input_str,
-                "-vf", &backup_filter,
-                "-c:v", &encoder.video_codec,
-                "-c:a", "copy",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                "-y", &output_str,
+            let backup_args: Vec<String> = vec![
+                "-hide_banner".to_string(),
+                "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), input_path.to_string_lossy().to_string(),
+                "-vf".to_string(), backup_filter,
+                "-c:v".to_string(), encoder.video_codec.to_string(),
+                "-c:a".to_string(), "copy".to_string(),
+                "-pix_fmt".to_string(), "yuv420p".to_string(),
+                "-movflags".to_string(), "+faststart".to_string(),
+                "-y".to_string(),
+                output_path.to_string_lossy().to_string(),
             ];
             
-            match run_ffmpeg_fast(&backup_args) {
+            match run_ffmpeg_fast_str(&backup_args) {
                 Ok(_) => {
                     info!("备用字幕方案成功");
                 }
@@ -1051,7 +1057,6 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     tasks.push(task.clone());
     info!("任务创建成功: id={}", task.id);
     
-    let configs_clone = state.configs.clone();
     let tasks_clone = state.tasks.clone();
     let task_id = task.id.clone();
     let config_clone = config.clone();
@@ -1065,7 +1070,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 e.to_string()
             });
             if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                t.status = super::video_processor::TaskStatus::Running;
+                t.status = TaskStatus::Running;
                 t.started_at = Some(chrono::Utc::now());
             }
         }
@@ -1076,7 +1081,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 error!("创建输出目录失败: {}", e);
                 let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
                 if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                    t.status = super::video_processor::TaskStatus::Error;
+                    t.status = TaskStatus::Error;
                     t.error_message = Some(format!("创建输出目录失败: {}", e));
                 }
                 return;
@@ -1118,7 +1123,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     
                     let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
                     if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.status = super::video_processor::TaskStatus::Error;
+                        t.status = TaskStatus::Error;
                         t.error_message = Some(format!("视频 {} 处理失败: {}", i + 1, e));
                     }
                     return;
@@ -1128,7 +1133,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         
         let mut tasks = tasks_clone.write().map_err(|e| e.to_string());
         if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-            t.status = super::video_processor::TaskStatus::Completed;
+            t.status = TaskStatus::Completed;
             t.completed_at = Some(chrono::Utc::now());
         }
         
@@ -1186,4 +1191,59 @@ pub fn get_task(state: tauri::State<AppState>, id: String) -> Result<Task, Strin
         .find(|t| t.id == id)
         .cloned()
         .ok_or_else(|| format!("任务 {} 不存在", id))
+}
+
+#[tauri::command]
+pub fn get_tasks(state: tauri::State<AppState>) -> Result<Vec<Task>, String> {
+    info!("获取所有任务");
+    let tasks = state.tasks.read().map_err(|e| e.to_string())?;
+    Ok(tasks.clone())
+}
+
+#[tauri::command]
+pub fn refresh_tasks_from_disk(state: tauri::State<AppState>) -> Result<Vec<Task>, String> {
+    info!("从磁盘刷新任务状态");
+    let tasks = state.tasks.read().map_err(|e| e.to_string())?;
+    Ok(tasks.clone())
+}
+
+#[tauri::command]
+pub fn get_task_status(state: tauri::State<AppState>, id: String) -> Result<TaskStatus, String> {
+    info!("获取任务状态: id={}", id);
+    let tasks = state.tasks.read().map_err(|e| e.to_string())?;
+    match tasks.iter().find(|t| t.id == id) {
+        Some(task) => Ok(task.status.clone()),
+        None => Err(format!("任务 {} 不存在", id)),
+    }
+}
+
+#[tauri::command]
+pub fn open_folder(path: String) -> Result<(), String> {
+    info!("打开文件夹: {}", path);
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+    }
+    
+    Ok(())
 }
