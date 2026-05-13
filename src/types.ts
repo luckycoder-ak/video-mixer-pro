@@ -18,6 +18,7 @@ export interface VideoConfig {
   template_segments: TemplateSegment[];
   tutorial_folder: string;
   output_folder: string;
+  enable_transition: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -65,6 +66,7 @@ export const createDefaultConfig = (): VideoConfig => ({
   ],
   tutorial_folder: '',
   output_folder: '',
+  enable_transition: false,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 });

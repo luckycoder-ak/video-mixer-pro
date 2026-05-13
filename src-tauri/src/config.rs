@@ -5,6 +5,10 @@ use chrono::{DateTime, Utc};
 use crate::AppState;
 use log::info;
 
+fn default_transition_duration() -> f32 {
+    0.2
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSegment {
     pub segment_index: usize,
@@ -35,6 +39,10 @@ pub struct VideoConfig {
     pub template_segments: Vec<TemplateSegment>,
     pub tutorial_folder: String,
     pub output_folder: String,
+    #[serde(default)]
+    pub enable_transition: bool,
+    #[serde(default = "default_transition_duration")]
+    pub transition_duration: f32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -55,6 +63,8 @@ impl VideoConfig {
             template_segments: Vec::new(),
             tutorial_folder: String::new(),
             output_folder: String::new(),
+            enable_transition: false,
+            transition_duration: default_transition_duration(),
             created_at: now,
             updated_at: now,
         }

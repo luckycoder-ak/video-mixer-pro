@@ -723,6 +723,78 @@ fn process_single_mode_segment(
     Ok(())
 }
 
+/// 从素材库随机选择片段补充视频时长
+fn supplement_video_with_random_clips(
+    task_id: &str,
+    cancel: &Arc<AtomicBool>,
+    input_video: &PathBuf,
+    output_video: &PathBuf,
+    duration_needed: f32,
+    root_folder: &str,
+    output_width: u32,
+    output_height: u32,
+) -> Result<(), String> {
+    // 获取素材库中的所有视频文件
+    let videos = get_video_files(root_folder)?;
+    if videos.is_empty() {
+        return Err("素材库中没有可用的视频文件".to_string());
+    }
+
+    // 过滤掉输入视频本身
+    let available_videos: Vec<_> = videos
+        .into_iter()
+        .filter(|v| v != input_video)
+        .collect();
+
+    if available_videos.is_empty() {
+        return Err("素材库中没有其他可用的视频文件".to_string());
+    }
+
+    // 随机选择一个视频
+    let mut rng = rand::thread_rng();
+    let random_index = rng.gen_range(0..available_videos.len());
+    let selected_video = &available_videos[random_index];
+
+    // 探测选中视频的时长
+    let clip_duration = probe_video_duration(&selected_video.to_string_lossy())?;
+    
+    // 使用的片段时长（不超过视频本身时长和需要的时长）
+    let use_duration = duration_needed.min(clip_duration);
+    
+    // 随机选择起始位置（确保有足够长度）
+    let max_start = (clip_duration - use_duration).max(0.0);
+    let start_offset = if max_start > 0.0 {
+        rng.gen_range(0.0..max_start)
+    } else {
+        0.0
+    };
+
+    let encoder = detect_best_encoder();
+    let num_cpus_str = num_cpus::get().to_string();
+
+    // 构建 filter_complex：第一个视频直接输出，第二个视频截取并缩放
+    let filter_complex = format!(
+        "[1:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,trim=start={}:duration={},setpts=PTS-STARTPTS[v1];[0:v][v1]concat=n=2:v=1:a=0",
+        output_width, output_height, output_width, output_height, start_offset, use_duration
+    );
+
+    let args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input_video.to_string_lossy().to_string(),
+        "-i".to_string(), selected_video.to_string_lossy().to_string(),
+        "-filter_complex".to_string(), filter_complex,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-threads".to_string(), num_cpus_str,
+        "-y".to_string(),
+        output_video.to_string_lossy().to_string(),
+    ];
+
+    run_ffmpeg_with_cancel(task_id, cancel, &args)
+}
+
 fn process_dual_mode_optimized(
     task_id: &str,
     cancel: &Arc<AtomicBool>,
@@ -741,9 +813,11 @@ fn process_dual_mode_optimized(
     // S4：中间 mp4 放入任务级 temp_dir，由 TempDirGuard 统一回收
     let left_scaled = temp_dir.join(format!("left_scaled_{}.mp4", Uuid::new_v4()));
     let right_scaled = temp_dir.join(format!("right_scaled_{}.mp4", Uuid::new_v4()));
+    let bg_blur = temp_dir.join(format!("bg_blur_{}.mp4", Uuid::new_v4()));
 
     let left_scaled_str = left_scaled.to_string_lossy().to_string();
     let right_scaled_str = right_scaled.to_string_lossy().to_string();
+    let bg_blur_str = bg_blur.to_string_lossy().to_string();
 
     let half_width = output_width / 2;
     let encoder = detect_best_encoder();
@@ -754,6 +828,12 @@ fn process_dual_mode_optimized(
         half_width, output_height, half_width, output_height
     );
 
+    // 背景模糊滤镜（增强模糊效果，使用更强的模糊度）
+    let bg_blur_filter = format!(
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0xE5E7EB,gblur=sigma=100,gblur=sigma=60,gblur=sigma=30,setsar=sar=1,fps=30,format=yuv420p",
+        output_width, output_height, output_width, output_height
+    );
+
     let start_str = start_offset.to_string();
     let duration_str = duration.to_string();
 
@@ -761,7 +841,7 @@ fn process_dual_mode_optimized(
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
         "-ss".to_string(), start_str.clone(),
-        "-i".to_string(), input1_str,
+        "-i".to_string(), input1_str.clone(),
         "-t".to_string(), duration_str.clone(),
         "-an".to_string(),
         "-vf".to_string(), scale_filter.clone(),
@@ -787,29 +867,55 @@ fn process_dual_mode_optimized(
         right_scaled_str.clone(),
     ];
 
+    // 背景虚化处理参数
+    let bg_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-ss".to_string(), start_str.clone(),
+        "-i".to_string(), input1_str,
+        "-t".to_string(), duration_str.clone(),
+        "-an".to_string(),
+        "-vf".to_string(), bg_blur_filter,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-threads".to_string(), num_cpus_str.clone(),
+        "-y".to_string(),
+        bg_blur_str.clone(),
+    ];
+
     let task_id_l = task_id.to_string();
     let cancel_l = cancel.clone();
     let task_id_r = task_id.to_string();
     let cancel_r = cancel.clone();
+    let task_id_bg = task_id.to_string();
+    let cancel_bg = cancel.clone();
 
     let left_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_l, &cancel_l, &left_args));
     let right_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_r, &cancel_r, &right_args));
+    let bg_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_bg, &cancel_bg, &bg_args));
 
     let left_result = left_handle.join().map_err(|e| format!("线程 left 合并失败: {:?}", e))?;
     let right_result = right_handle.join().map_err(|e| format!("线程 right 合并失败: {:?}", e))?;
+    let bg_result = bg_handle.join().map_err(|e| format!("线程 bg 合并失败: {:?}", e))?;
 
     left_result.map_err(|e| format!("左视频处理失败: {}", e))?;
     right_result.map_err(|e| format!("右视频处理失败: {}", e))?;
+    bg_result.map_err(|e| format!("背景虚化处理失败: {}", e))?;
 
     if cancel.load(Ordering::SeqCst) {
         return Err("已取消".to_string());
     }
 
-    let merge_filter = "[0:v][1:v]hstack=inputs=2[out]".to_string();
+    // 修改合并滤镜，将左右视频叠加到虚化背景上
+    let merge_filter = format!(
+        "[0:v][1:v]overlay=0:0[tmp];[tmp][2:v]overlay={}:0[out]",
+        half_width
+    );
 
     let merge_args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), bg_blur_str,
         "-i".to_string(), left_scaled_str,
         "-i".to_string(), right_scaled_str,
         "-filter_complex".to_string(), merge_filter,
@@ -825,6 +931,7 @@ fn process_dual_mode_optimized(
 
     let _ = fs::remove_file(&left_scaled);
     let _ = fs::remove_file(&right_scaled);
+    let _ = fs::remove_file(&bg_blur);
 
     Ok(())
 }
@@ -1189,7 +1296,7 @@ fn apply_chained_xfade(
         let fade_out_start = (total_duration - 1.0).max(0.0);
 
         let filter_complex = format!(
-            "{};[{}:a]volume=0.8,afade=t=out:st={}:d=1.0[a]",
+            "{};[{}:a]volume=0.8,fade=t=in:st=0:d=1,fade=t=out:st={}:d=1[a]",
             filter_complex_base, audio_input_index, fade_out_start
         );
 
@@ -1283,7 +1390,7 @@ fn process_single_mode(
     tutorial_folder: &str,
     video_ratio: &str,
     audio_path: &str,
-    _audio_duration: f32,
+    audio_duration: f32,
     subtitle_path: &str,
     output_dir: &PathBuf,
     output_filename: &str,
@@ -1292,6 +1399,9 @@ fn process_single_mode(
     // 教程素材全局已用集合（持久化）；本视频内挑中的需要立即写入并持久化。
     tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
     app_data_file: &Arc<RwLock<Option<PathBuf>>>,
+    root_folder: &str,
+    enable_transition: bool,
+    transition_duration: f32,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
     let temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", Uuid::new_v4()));
@@ -1299,11 +1409,19 @@ fn process_single_mode(
     let _temp_dir_guard = TempDirGuard(temp_dir.clone());
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let transition_duration: f32 = 0.25;
 
     let time_points: Vec<f32> = template_segments.iter().map(|s| s.duration).collect();
-    let segment_offsets = compute_segment_offsets(&time_points);
-    let segment_durations = compute_segment_durations(&time_points);
+    let mut segment_offsets = compute_segment_offsets(&time_points);
+    let mut segment_durations = compute_segment_durations(&time_points);
+
+    // 如果启用转场效果，除第一个片段外，后续片段的起点都增加转场时长
+    // 这样可以为转场效果预留空间，避免片段重叠
+    if enable_transition {
+        for i in 1..segment_offsets.len() {
+            segment_offsets[i] += transition_duration;
+            segment_durations[i] -= transition_duration;
+        }
+    }
 
     for (i, segment) in template_segments.iter().enumerate() {
         if cancel.load(Ordering::SeqCst) {
@@ -1451,9 +1569,18 @@ fn process_single_mode(
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
-    let tutorial_args: Vec<String> = vec![
+    let mut tutorial_args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
+    ];
+
+    // 如果启用转场效果，教程视频从转场时长秒数开始截取
+    if enable_transition {
+        tutorial_args.push("-ss".to_string());
+        tutorial_args.push(transition_duration.to_string());
+    }
+
+    tutorial_args.extend(vec![
         "-i".to_string(), tutorial_input_str,
         "-vf".to_string(), tutorial_scale_filter,
         "-c:v".to_string(), encoder.video_codec.to_string(),
@@ -1462,7 +1589,7 @@ fn process_single_mode(
         "-threads".to_string(), num_cpus_str,
         "-y".to_string(),
         tutorial_scaled_str,
-    ];
+    ]);
 
     match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
         Ok(()) => {
@@ -1486,132 +1613,101 @@ fn process_single_mode(
         info!("片段 {} 时长: {:.2}秒", i + 1, duration);
     }
 
-    let mut transition_types: Vec<String> = Vec::new();
-    for i in 0..segment_files.len().saturating_sub(1) {
-        let transition = get_random_transition_type();
-        transition_types.push(transition.clone());
-        info!("转场 {} 类型: {}", i + 1, transition);
-    }
-
     let xfade_step_id = format!("video_{}__xfade", video_index);
-    push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Running, None);
-
-    info!("开始应用链式转场...");
-    // 先不对模板片段添加音频，音频将在最后与教程片段合并时添加
-    match apply_chained_xfade(
-        task_id, cancel,
-        &segment_files,
-        &segment_durations,
-        &transition_types,
-        &temp_output_path,
-        transition_duration,
-        output_width,
-        output_height,
-        "",  // 暂时不传音频
-    ) {
-        Ok(()) => push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Completed, None),
-        Err(e) => {
-            push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Error, Some(e.clone()));
-            return Err(e);
-        }
-    }
-
-    // 处理模板片段和教程片段的合并（添加转场和音频）
-    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
-    if tutorial_scaled.exists() {
-        let concat_step_id = format!("video_{}__concat", video_index);
-        push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Running, None);
-
-        // 获取教程片段时长
-        let tutorial_duration = probe_video_duration(&tutorial_scaled.to_string_lossy())?;
-        info!("教程片段时长: {:.2}秒", tutorial_duration);
-
-        // 计算总时长（模板片段总时长 - 转场时间 + 教程片段时长 - 额外转场时间）
-        let template_total_duration = segment_durations.iter().fold(0.0, |acc, &d| acc + d)
-            - (transition_duration * (segment_files.len() - 1) as f32);
-        let total_duration = template_total_duration + tutorial_duration - transition_duration;
-
-        // 添加模板和教程之间的转场类型
-        let tutorial_transition = get_random_transition_type();
-        info!("模板与教程转场类型: {}", tutorial_transition);
-
-        let encoder = detect_best_encoder();
-        let num_cpus_str = num_cpus::get().to_string();
-
-        let mut args: Vec<String> = vec![
-            "-hide_banner".to_string(),
-            "-loglevel".to_string(), "error".to_string(),
-            "-i".to_string(), temp_output_path.to_string_lossy().to_string(),
-            "-i".to_string(), tutorial_scaled.to_string_lossy().to_string(),
-        ];
-
-        // 如果有音频，添加音频输入
-        let mut filter_complex = String::new();
-        let mut map_args: Vec<String> = Vec::new();
-
-        if !audio_path.is_empty() {
-            args.extend(["-i".to_string(), audio_path.to_string()]);
-            let audio_input_index = 2;
-            let fade_out_start = (total_duration - 1.0).max(0.0);
-            
-            // 转场滤镜 + 音频处理
-            filter_complex = format!(
-                "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
-                 [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video];\
-                 [{}:a]volume=0.8,afade=t=out:st={}:d=1.0[a]",
-                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
-                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
-                audio_input_index, fade_out_start
-            );
-        } else {
-            // 只有视频转场，无声
-            filter_complex = format!(
-                "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
-                 [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video]",
-                tutorial_transition, transition_duration, (template_total_duration - transition_duration),
-                tutorial_transition, transition_duration, (template_total_duration - transition_duration)
-            );
+    
+    if enable_transition {
+        let mut transition_types: Vec<String> = Vec::new();
+        for i in 0..segment_files.len().saturating_sub(1) {
+            let transition = get_random_transition_type();
+            transition_types.push(transition.clone());
+            info!("转场 {} 类型: {}", i + 1, transition);
         }
 
-        args.extend([
-            "-filter_complex".to_string(), filter_complex,
-            "-map".to_string(), "[final_video]".to_string(),
-        ]);
+        push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Running, None);
 
-        if !audio_path.is_empty() {
-            args.extend([
-                "-map".to_string(), "[a]".to_string(),
-            ]);
-        }
-
-        args.extend([
-            "-c:v".to_string(), encoder.video_codec.to_string(),
-            "-c:a".to_string(), encoder.audio_codec.to_string(),
-            "-pix_fmt".to_string(), "yuv420p".to_string(),
-            "-movflags".to_string(), "+faststart".to_string(),
-            "-threads".to_string(), num_cpus_str,
-            "-y".to_string(),
-            temp_with_tutorial_path.to_string_lossy().to_string(),
-        ]);
-
-        match run_ffmpeg_with_cancel(task_id, cancel, &args) {
-            Ok(()) => {
-                push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Completed, None);
-            }
+        info!("开始应用链式转场...");
+        // 先不对模板片段添加音频，音频将在最后与教程片段合并时添加
+        match apply_chained_xfade(
+            task_id, cancel,
+            &segment_files,
+            &segment_durations,
+            &transition_types,
+            &temp_output_path,
+            transition_duration,
+            output_width,
+            output_height,
+            "",  // 暂时不传音频
+        ) {
+            Ok(()) => push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Completed, None),
             Err(e) => {
-                push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Error, Some(e.clone()));
+                push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 链式转场", video_index), StepStatus::Error, Some(e.clone()));
                 return Err(e);
             }
         }
     } else {
-        // 如果没有教程片段，直接复制转场后的输出，并添加音频
-        if !audio_path.is_empty() {
-            let audio_step_id = format!("video_{}__audio", video_index);
-            push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Running, None);
+        // 不启用转场效果，直接拼接片段
+        push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 拼接片段", video_index), StepStatus::Running, None);
 
+        info!("开始直接拼接片段...");
+        // 使用 concat 滤镜直接拼接多个视频文件
+        // 注意：-i 和文件路径必须是独立的参数，不能合并
+        let mut input_args: Vec<String> = Vec::new();
+        for f in &segment_files {
+            input_args.push("-i".to_string());
+            input_args.push(f.to_string_lossy().to_string());
+        }
+        
+        // 构建 concat 滤镜：先缩放每个输入视频，然后拼接
+        let mut filter_parts: Vec<String> = Vec::new();
+        for i in 0..segment_files.len() {
+            filter_parts.push(format!("[{}:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2[v{}]",
+                i, output_width, output_height, output_width, output_height, i));
+        }
+        let scaled_streams: String = (0..segment_files.len()).map(|i| format!("[v{}]", i)).collect::<Vec<_>>().join("");
+        filter_parts.push(format!("{}concat=n={}:v=1:a=0[out]", scaled_streams, segment_files.len()));
+        let filter_complex = filter_parts.join(";");
+        
+        let output_path_str = temp_output_path.to_string_lossy().to_string();
+        let mut ffmpeg_args = vec!["-y".to_string()];
+        ffmpeg_args.extend(input_args);
+        ffmpeg_args.extend([
+            "-filter_complex".to_string(), filter_complex,
+            "-map".to_string(), "[out]".to_string(),
+            "-c:v".to_string(), "libx264".to_string(),
+            "-preset".to_string(), "fast".to_string(),
+            "-crf".to_string(), "23".to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            output_path_str,
+        ]);
+        
+        match run_ffmpeg_with_cancel(task_id, cancel, &ffmpeg_args) {
+            Ok(()) => push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 拼接片段", video_index), StepStatus::Completed, None),
+            Err(e) => {
+                push_step(tasks, task_id, &xfade_step_id, &format!("视频{} - 拼接片段", video_index), StepStatus::Error, Some(e.clone()));
+                return Err(e);
+            }
+        }
+    }
+
+    // 处理模板片段和教程片段的合并（仅视频转场，音频稍后添加）
+    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
+    if tutorial_scaled.exists() {
+        let concat_step_id = format!("video_{}__concat", video_index);
+        
+        if enable_transition {
+            push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Running, None);
+
+            // 获取教程片段时长
+            let tutorial_duration = probe_video_duration(&tutorial_scaled.to_string_lossy())?;
+            info!("教程片段时长: {:.2}秒", tutorial_duration);
+
+            // 计算总时长（模板片段总时长 - 转场时间）
             let template_total_duration = segment_durations.iter().fold(0.0, |acc, &d| acc + d)
                 - (transition_duration * (segment_files.len() - 1) as f32);
-            let fade_out_start = (template_total_duration - 1.0).max(0.0);
+
+            // 添加模板和教程之间的转场类型
+            let tutorial_transition = get_random_transition_type();
+            info!("模板与教程转场类型: {}", tutorial_transition);
 
             let encoder = detect_best_encoder();
             let num_cpus_str = num_cpus::get().to_string();
@@ -1620,13 +1716,16 @@ fn process_single_mode(
                 "-hide_banner".to_string(),
                 "-loglevel".to_string(), "error".to_string(),
                 "-i".to_string(), temp_output_path.to_string_lossy().to_string(),
-                "-i".to_string(), audio_path.to_string(),
+                "-i".to_string(), tutorial_scaled.to_string_lossy().to_string(),
                 "-filter_complex".to_string(),
-                format!("[1:a]volume=0.8,afade=t=out:st={}:d=1.0[a]", fade_out_start),
-                "-map".to_string(), "0:v".to_string(),
-                "-map".to_string(), "[a]".to_string(),
+                format!(
+                    "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
+                     [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video]",
+                    tutorial_transition, transition_duration, (template_total_duration - transition_duration),
+                    tutorial_transition, transition_duration, (template_total_duration - transition_duration)
+                ),
+                "-map".to_string(), "[final_video]".to_string(),
                 "-c:v".to_string(), encoder.video_codec.to_string(),
-                "-c:a".to_string(), encoder.audio_codec.to_string(),
                 "-pix_fmt".to_string(), "yuv420p".to_string(),
                 "-movflags".to_string(), "+faststart".to_string(),
                 "-threads".to_string(), num_cpus_str,
@@ -1636,16 +1735,123 @@ fn process_single_mode(
 
             match run_ffmpeg_with_cancel(task_id, cancel, &args) {
                 Ok(()) => {
-                    push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Completed, None);
+                    push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Completed, None);
                 }
                 Err(e) => {
-                    push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Error, Some(e.clone()));
+                    push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Error, Some(e.clone()));
                     return Err(e);
                 }
             }
         } else {
-            fs::copy(&temp_output_path, &temp_with_tutorial_path)
-                .map_err(|e| format!("复制视频文件失败: {}", e))?;
+            // 不启用转场效果，直接拼接模板和教程片段
+            push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段", video_index), StepStatus::Running, None);
+            
+            let output_path_str = temp_with_tutorial_path.to_string_lossy().to_string();
+            let ffmpeg_args: Vec<String> = vec![
+                "-hide_banner".to_string(),
+                "-loglevel".to_string(), "error".to_string(),
+                "-i".to_string(), temp_output_path.to_string_lossy().to_string(),
+                "-i".to_string(), tutorial_scaled.to_string_lossy().to_string(),
+                "-filter_complex".to_string(), "[0:v][1:v]concat=n=2:v=1:a=0[out]".to_string(),
+                "-map".to_string(), "[out]".to_string(),
+                "-c:v".to_string(), "libx264".to_string(),
+                "-preset".to_string(), "fast".to_string(),
+                "-crf".to_string(), "23".to_string(),
+                "-pix_fmt".to_string(), "yuv420p".to_string(),
+                "-y".to_string(),
+                output_path_str,
+            ];
+
+            match run_ffmpeg_with_cancel(task_id, cancel, &ffmpeg_args) {
+                Ok(()) => push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段", video_index), StepStatus::Completed, None),
+                Err(e) => {
+                    push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段", video_index), StepStatus::Error, Some(e.clone()));
+                    return Err(e);
+                }
+            }
+        }
+    } else {
+        // 如果没有教程片段，直接复制转场后的输出（仅视频，音频稍后添加）
+        fs::copy(&temp_output_path, &temp_with_tutorial_path)
+            .map_err(|e| format!("复制视频文件失败: {}", e))?;
+    }
+
+    // 检查视频时长是否小于音频时长，如果小于则补齐
+    if !audio_path.is_empty() && audio_duration > 0.0 {
+        let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
+        info!("当前视频时长: {:.2}秒, 音频时长: {:.2}秒", video_duration, audio_duration);
+
+        if video_duration < audio_duration {
+            let duration_needed = audio_duration - video_duration;
+            info!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed);
+
+            let supplement_step_id = format!("video_{}__supplement", video_index);
+            push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
+
+            let temp_supplemented_path = temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
+
+            match supplement_video_with_random_clips(
+                task_id,
+                cancel,
+                &temp_with_tutorial_path,
+                &temp_supplemented_path,
+                duration_needed,
+                root_folder,
+                output_width,
+                output_height,
+            ) {
+                Ok(()) => {
+                    push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Completed, None);
+                    fs::copy(&temp_supplemented_path, &temp_with_tutorial_path)
+                        .map_err(|e| format!("复制补充后的视频失败: {}", e))?;
+                }
+                Err(e) => {
+                    push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Error, Some(e.clone()));
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    // 添加音频
+    if !audio_path.is_empty() {
+        let audio_step_id = format!("video_{}__audio", video_index);
+        push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Running, None);
+
+        let encoder = detect_best_encoder();
+        let num_cpus_str = num_cpus::get().to_string();
+        // 使用不同的临时文件作为输出，避免输入输出相同
+        let temp_with_audio_path = temp_dir.join("temp_with_audio.mp4");
+
+        let args: Vec<String> = vec![
+            "-hide_banner".to_string(),
+            "-loglevel".to_string(), "error".to_string(),
+            "-i".to_string(), temp_with_tutorial_path.to_string_lossy().to_string(),
+            "-i".to_string(), audio_path.to_string(),
+            "-filter_complex".to_string(),
+            "[1:a]volume=0.8[a]".to_string(),
+            "-map".to_string(), "0:v".to_string(),
+            "-map".to_string(), "[a]".to_string(),
+            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:a".to_string(), encoder.audio_codec.to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-movflags".to_string(), "+faststart".to_string(),
+            "-threads".to_string(), num_cpus_str,
+            "-y".to_string(),
+            temp_with_audio_path.to_string_lossy().to_string(),
+        ];
+
+        match run_ffmpeg_with_cancel(task_id, cancel, &args) {
+            Ok(()) => {
+                push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Completed, None);
+                // 将添加音频后的文件复制回 temp_with_tutorial_path
+                fs::copy(&temp_with_audio_path, &temp_with_tutorial_path)
+                    .map_err(|e| format!("复制音频处理后的文件失败: {}", e))?;
+            }
+            Err(e) => {
+                push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Error, Some(e.clone()));
+                return Err(e);
+            }
         }
     }
 
@@ -1909,6 +2115,9 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                 &mut used_per_folder,
                 &tutorial_used_global,
                 &app_data_file,
+                &config_clone.root_folder,
+                config_clone.enable_transition,
+                config_clone.transition_duration,
             ) {
                 Ok(()) => {
                     info!("视频 {} 处理成功", i + 1);
@@ -2043,15 +2252,36 @@ pub fn resume_task(state: tauri::State<AppState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn delete_task(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    info!("删除任务: id={}", id);
+pub fn delete_task(state: tauri::State<AppState>, id: String, delete_videos: bool) -> Result<(), String> {
+    info!("删除任务: id={}, delete_videos={}", id, delete_videos);
     // S2：删除即取消，立即 kill ffmpeg
     signal_cancel(&id);
+    
+    // 获取任务信息（包含output_folder）以便后续删除文件夹
+    let task_to_delete: Option<Task> = {
+        let tasks = state.tasks.read().map_err(|e| e.to_string())?;
+        tasks.iter().find(|t| t.id == id).cloned()
+    };
+    
     let mut tasks = state.tasks.write().map_err(|e| e.to_string())?;
     tasks.retain(|t| t.id != id);
     info!("任务 {} 已删除", id);
     // 释放锁后再保存到磁盘
     drop(tasks);
+    
+    // 如果需要删除视频文件夹
+    if delete_videos {
+        if let Some(task) = task_to_delete {
+            let output_path = PathBuf::from(&task.output_folder);
+            if output_path.exists() && output_path.is_dir() {
+                match fs::remove_dir_all(&output_path) {
+                    Ok(_) => info!("成功删除任务文件夹: {}", task.output_folder),
+                    Err(e) => warn!("删除任务文件夹失败: {}", e),
+                }
+            }
+        }
+    }
+    
     if let Err(e) = save_tasks_to_disk(
         &state.app_data_file,
         &state.tasks,

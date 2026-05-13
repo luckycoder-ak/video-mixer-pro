@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Task, TaskStep } from '../types';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
 
 interface Props {
   tasks: Task[];
@@ -12,11 +13,12 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [hoveredTask, setHoveredTask] = useState<Task | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
   const [hoverTimeout, setHoverTimeout] = useState<number | null>(null);
+  const [deleteModalTask, setDeleteModalTask] = useState<Task | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
       onRefresh();
-    }, 3000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [onRefresh]);
@@ -49,33 +51,23 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     }
   };
 
-  const handleDeleteTask = async (task: Task) => {
-    const hasOutput = task.output_folder && task.output_folder.trim() !== '';
-    
-    let deleteVideos = false;
-    if (hasOutput && task.status === 'completed') {
-      const result = confirm(`确定要删除任务 "${task.task_name}" 吗？\n\n是否同时删除已生成的视频文件夹？`);
-      if (result) {
-        deleteVideos = confirm('确定要删除已生成的视频文件吗？此操作不可恢复！');
-      } else {
-        setContextMenu(null);
-        return;
-      }
-    } else {
-      if (!confirm(`确定要删除任务 "${task.task_name}" 吗？`)) {
-        setContextMenu(null);
-        return;
-      }
-    }
-    
+  const handleDeleteTask = (task: Task) => {
+    console.log('handleDeleteTask called, task:', task);
+    setContextMenu(null);
+    // 使用 setTimeout 确保上下文菜单及其遮罩层完全移除后再显示删除模态框
+    setTimeout(() => {
+      console.log('Setting deleteModalTask after delay');
+      setDeleteModalTask(task);
+    }, 50);
+  };
+
+  const handleDeleteConfirm = async (task: Task, deleteVideos: boolean) => {
     try {
       await invoke('delete_task', { id: task.id, delete_videos: deleteVideos });
-      setContextMenu(null);
       onRefresh();
-      alert('任务已删除');
+      setDeleteModalTask(null);
     } catch (error) {
       console.error('删除任务失败:', error);
-      alert('删除任务失败');
     }
   };
 
@@ -575,6 +567,18 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteModalTask && (
+        <DeleteConfirmModal
+            key={deleteModalTask.id}
+            task={deleteModalTask}
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => {
+              setDeleteModalTask(null);
+            }}
+          />
       )}
     </div>
   );

@@ -379,6 +379,25 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           </div>
         </div>
       )}
+
+      {/* 高级参数配置 */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-800">⚙️ 高级参数配置</h3>
+        </div>
+        <div className="p-4 space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enable_transition}
+              onChange={(e) => handleInputChange('enable_transition', e.target.checked)}
+              className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
+            />
+            <span className="text-sm font-medium text-gray-700">是否启用转场效果</span>
+            <span className="text-xs text-gray-400">（默认不启用）</span>
+          </label>
+        </div>
+      </div>
     </div>
   );
 
