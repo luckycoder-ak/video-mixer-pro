@@ -14,6 +14,8 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
   const [hoverTimeout, setHoverTimeout] = useState<number | null>(null);
   const [deleteModalTask, setDeleteModalTask] = useState<Task | null>(null);
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -53,7 +55,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
 
   const handleDeleteTask = (task: Task) => {
     setContextMenu(null);
-    // 使用 setTimeout 确保上下文菜单及其遮罩层完全移除后再显示删除模态框
     setTimeout(() => {
       setDeleteModalTask(task);
     }, 50);
@@ -61,11 +62,66 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
 
   const handleDeleteConfirm = async (task: Task, deleteVideos: boolean) => {
     try {
-      await invoke('delete_task', { id: task.id, delete_videos: deleteVideos });
+      await invoke('delete_task', { id: task.id, deleteVideos });
       onRefresh();
       setDeleteModalTask(null);
     } catch (error) {
       console.error('删除任务失败:', error);
+      alert(`删除任务失败: ${error}`);
+    }
+  };
+
+  const handleRetryTask = async (task: Task) => {
+    try {
+      await invoke('retry_task', { id: task.id });
+      setContextMenu(null);
+      onRefresh();
+    } catch (error) {
+      console.error('重试任务失败:', error);
+      alert(`重试任务失败: ${error}`);
+    }
+  };
+
+  const toggleTaskSelection = (taskId: string) => {
+    const newSelected = new Set(selectedTasks);
+    if (newSelected.has(taskId)) {
+      newSelected.delete(taskId);
+    } else {
+      newSelected.add(taskId);
+    }
+    setSelectedTasks(newSelected);
+    setSelectAll(newSelected.size === tasks.length);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedTasks(new Set());
+    } else {
+      setSelectedTasks(new Set(tasks.map(t => t.id)));
+    }
+    setSelectAll(!selectAll);
+  };
+
+  const handleBatchDelete = async (deleteVideos: boolean) => {
+    if (selectedTasks.size === 0) {
+      alert('请先选择要删除的任务');
+      return;
+    }
+
+    const confirmed = window.confirm(`确定要删除选中的 ${selectedTasks.size} 个任务吗？${deleteVideos ? '同时将删除这些任务生成的视频文件。' : ''}`);
+
+    if (!confirmed) return;
+
+    try {
+      for (const taskId of selectedTasks) {
+        await invoke('delete_task', { id: taskId, deleteVideos });
+      }
+      setSelectedTasks(new Set());
+      setSelectAll(false);
+      onRefresh();
+    } catch (error) {
+      console.error('批量删除任务失败:', error);
+      alert(`批量删除任务失败: ${error}`);
     }
   };
 
@@ -192,7 +248,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     };
     if (orderMap[id] !== undefined) return orderMap[id];
     
-    // 处理子步骤 segment_{i}_*
     if (id.startsWith('segment_')) {
       const parts = id.split('_');
       const videoIndex = parseInt(parts[1], 10);
@@ -205,7 +260,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
       return videoIndex * 100 + (subOrderMap[subStep] || 0);
     }
     
-    // 处理 video_* 步骤，放在对应的 segment 之前
     if (id.startsWith('video_')) {
       const parts = id.split('_');
       const videoIndex = parseInt(parts[1], 10);
@@ -238,7 +292,7 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
       const timeout = window.setTimeout(() => {
         setHoverPosition(newPosition);
         setHoveredTask(task);
-      }, 100);
+      }, 2000);
       
       setHoverTimeout(timeout);
     }
@@ -270,123 +324,170 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
       </div>
 
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="grid grid-cols-14 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          <div className="col-span-1">序号</div>
-          <div className="col-span-3">任务名称</div>
-          <div className="col-span-2">创建时间</div>
-          <div className="col-span-2">状态</div>
-          <div className="col-span-2">进度</div>
-          <div className="col-span-2">耗时 (秒)</div>
-          <div className="col-span-2">操作</div>
+        <div className="flex justify-between items-center p-4 bg-gray-50 border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectAll && tasks.length > 0}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+              />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">全选</span>
+            </label>
+            {selectedTasks.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">已选择 {selectedTasks.size} 项</span>
+                <button
+                  onClick={() => handleBatchDelete(false)}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  批量删除
+                </button>
+                <button
+                  onClick={() => handleBatchDelete(true)}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  删除并清理视频
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {tasks.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <div className="text-6xl mb-4 opacity-50">📋</div>
-            <p className="text-lg mb-2">暂无任务</p>
-            <p className="text-sm text-gray-400">在配置列表中点击"生成"按钮创建任务</p>
-          </div>
-        ) : (
-          [...tasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((task, index) => {
-            const { totalSeconds, averageSeconds } = calculateExecutionTime(task);
-            return (
-              <div
-                key={task.id}
-                className="grid grid-cols-14 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group"
-                onContextMenu={(e) => handleContextMenu(e, task)}
-                onMouseEnter={(e) => handleMouseEnter(e, task)}
-                onMouseLeave={handleMouseLeave}
-              >
-                <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
-                <div className="col-span-3">
-                  <div className="flex items-center gap-2">
-                    <span>📁</span>
-                    <span className="font-semibold text-gray-800">{task.task_name}</span>
-                  </div>
-                </div>
-                <div className="col-span-2 text-gray-500 text-sm flex items-center gap-1">
-                  <span>🕐</span>
-                  <span>{formatDate(task.created_at)}</span>
-                </div>
-                <div className="col-span-2">
-                  {getStatusBadge(task.status)}
-                  {(task.status === 'error' || task.status === 'partial') && task.error_message && (
-                    <div
-                      className="mt-1 text-xs text-red-600 break-all whitespace-pre-wrap leading-tight max-h-20 overflow-y-auto"
-                      title={task.error_message}
-                    >
-                      {task.error_message}
-                    </div>
-                  )}
-                  {task.status === 'partial' && task.failed_count > 0 && (
-                    <p className="text-xs text-orange-600 mt-0.5">
-                      失败 {task.failed_count} 个
-                    </p>
-                  )}
-                </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold font-mono text-gray-700">
-                      {task.completed_count}/{task.total_count}
-                    </span>
-                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
-                        style={{ width: `${(task.completed_count / task.total_count) * 100}%` }}
+        <div className="overflow-x-auto">
+          <div className="min-w-[1000px]">
+            <div className="grid grid-cols-15 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <div className="col-span-1"></div>
+              <div className="col-span-1">序号</div>
+              <div className="col-span-3">任务名称</div>
+              <div className="col-span-2">创建时间</div>
+              <div className="col-span-2">状态</div>
+              <div className="col-span-3">进度</div>
+              <div className="col-span-1">耗时</div>
+              <div className="col-span-2">操作</div>
+            </div>
+
+            {tasks.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <div className="text-6xl mb-4 opacity-50">📋</div>
+                <p className="text-lg mb-2">暂无任务</p>
+                <p className="text-sm text-gray-400">在配置列表中点击"生成"按钮创建任务</p>
+              </div>
+            ) : (
+              [...tasks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((task, index) => {
+                const { totalSeconds } = calculateExecutionTime(task);
+                return (
+                  <div
+                    key={task.id}
+                    className={`grid grid-cols-15 gap-4 p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center cursor-pointer group ${
+                      selectedTasks.has(task.id) ? 'bg-blue-50' : ''
+                    }`}
+                    onContextMenu={(e) => handleContextMenu(e, task)}
+                    onMouseEnter={(e) => handleMouseEnter(e, task)}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <div className="col-span-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedTasks.has(task.id)}
+                        onChange={() => toggleTaskSelection(task.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
                       />
                     </div>
-                  </div>
-                </div>
-                <div className="col-span-2">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-gray-500">
-                      总耗时: {totalSeconds}s
-                    </span>
-                    {averageSeconds > 0 && (
+                    <div className="col-span-1 text-gray-400">{String(index + 1).padStart(2, '0')}</div>
+                    <div className="col-span-3">
+                      <div className="flex items-center gap-2">
+                        <span>📁</span>
+                        <span className="font-semibold text-gray-800">{task.task_name}</span>
+                      </div>
+                    </div>
+                    <div className="col-span-2 text-gray-500 text-sm flex items-center gap-1">
+                      <span>🕐</span>
+                      <span>{formatDate(task.created_at)}</span>
+                    </div>
+                    <div className="col-span-2">
+                      {getStatusBadge(task.status)}
+                      {(task.status === 'error' || task.status === 'partial') && task.error_message && (
+                        <div
+                          className="mt-1 text-xs text-red-600 break-all whitespace-pre-wrap leading-tight max-h-20 overflow-y-auto"
+                          title={task.error_message}
+                        >
+                          {task.error_message}
+                        </div>
+                      )}
+                      {task.status === 'partial' && task.failed_count > 0 && (
+                        <p className="text-xs text-orange-600 mt-0.5">
+                          失败 {task.failed_count} 个
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold font-mono text-gray-700">
+                          {task.completed_count}/{task.total_count}
+                        </span>
+                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
+                            style={{ width: `${(task.completed_count / task.total_count) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-span-1">
                       <span className="text-xs text-gray-500">
-                        平均: {averageSeconds}s/个
+                        {totalSeconds}s
                       </span>
-                    )}
+                    </div>
+                    <div className="col-span-2">
+                      <div className="flex gap-2">
+                        {task.output_folder && task.output_folder.trim() !== '' && (
+                          <button
+                            onClick={() => handleOpenFolder(task)}
+                            className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                          >
+                            打开文件夹
+                          </button>
+                        )}
+                        {task.status === 'paused' ? (
+                          <button
+                            onClick={() => handleResumeTask(task)}
+                            className="px-3 py-1.5 text-sm bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-md transition-colors"
+                          >
+                            继续
+                          </button>
+                        ) : task.status === 'running' ? (
+                          <button
+                            onClick={() => handlePauseTask(task)}
+                            className="px-3 py-1.5 text-sm bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg hover:shadow-md transition-colors"
+                          >
+                            暂停
+                          </button>
+                        ) : (task.status === 'error' || task.status === 'partial') ? (
+                          <button
+                            onClick={() => handleRetryTask(task)}
+                            className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-md transition-colors"
+                          >
+                            重试
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={() => handleDeleteTask(task)}
+                          className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                          title="删除任务"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="col-span-2">
-                  <div className="flex gap-2">
-                  {task.output_folder && task.output_folder.trim() !== '' && (
-                    <button
-                      onClick={() => handleOpenFolder(task)}
-                      className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      打开文件夹
-                    </button>
-                  )}
-                  {task.status === 'paused' ? (
-                    <button
-                      onClick={() => handleResumeTask(task)}
-                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-md transition-all"
-                    >
-                      继续
-                    </button>
-                  ) : task.status === 'running' ? (
-                    <button
-                      onClick={() => handlePauseTask(task)}
-                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-yellow-500 to-yellow-600 text-white rounded-lg hover:shadow-md transition-all"
-                    >
-                      暂停
-                    </button>
-                  ) : null}
-                  <button
-                    onClick={() => handleDeleteTask(task)}
-                    className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                    title="删除任务"
-                  >
-                    🗑️
-                  </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
 
       {contextMenu && (
@@ -409,12 +510,21 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
               </button>
             )}
             {contextMenu.task.status === 'running' && (
-              <button 
+              <button
                 onClick={() => handlePauseTask(contextMenu.task)}
                 className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
               >
                 <span>⏸️</span>
                 <span>暂停任务</span>
+              </button>
+            )}
+            {(contextMenu.task.status === 'error' || contextMenu.task.status === 'partial') && (
+              <button
+                onClick={() => handleRetryTask(contextMenu.task)}
+                className="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+              >
+                <span>🔄</span>
+                <span>重试任务</span>
               </button>
             )}
             <div className="h-px bg-gray-200 my-2" />
@@ -479,11 +589,8 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
             {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
               <div className="space-y-2">
                 {[...hoveredTask.progress_steps]
-                  .filter(step => !step.id.startsWith('video_')) // 不显示冗余的 video_* 步骤
+                  .filter(step => !step.id.startsWith('video_'))
                   .filter(step => {
-                    // 只显示：
-                    // 1. init 和 finish 步骤
-                    // 2. 当前正在处理的这个视频的步骤
                     if (step.id === 'init' || step.id === 'finish') return true;
                     
                     if (step.id.startsWith('segment_')) {
@@ -521,14 +628,12 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                     );
                   })}
                 
-                {/* 显示整体进度统计 */}
                 {hoveredTask.completed_count > 0 || hoveredTask.total_count > 0 ? (
                   <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
                     已完成: {hoveredTask.completed_count}/{hoveredTask.total_count} 个视频
                   </div>
                 ) : null}
 
-                {/* 失败视频清单 */}
                 {hoveredTask.failed_videos && hoveredTask.failed_videos.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <h4 className="text-red-700 font-semibold text-xs mb-2 flex items-center gap-1">
@@ -548,7 +653,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                   </div>
                 )}
 
-                {/* 顶层 error_message（若存在且未被失败清单覆盖） */}
                 {hoveredTask.error_message && (!hoveredTask.failed_videos || hoveredTask.failed_videos.length === 0) && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 break-all whitespace-pre-wrap">
@@ -567,7 +671,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
         </div>
       )}
 
-      {/* Delete Confirm Modal */}
       {deleteModalTask && (
         <DeleteConfirmModal
             key={deleteModalTask.id}

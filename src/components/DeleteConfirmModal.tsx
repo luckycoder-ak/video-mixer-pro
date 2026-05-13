@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Task } from '../types';
 
 interface Props {
@@ -9,21 +9,13 @@ interface Props {
 
 export const DeleteConfirmModal: React.FC<Props> = ({ task, onConfirm, onCancel }) => {
   const [deleteVideos, setDeleteVideos] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const hasOutput = task.output_folder && task.output_folder.trim() !== '';
 
-  const handleConfirm = useCallback(() => {
-    // 直接将 task 对象传递给 onConfirm，避免闭包问题
-    onConfirm(task, deleteVideos);
-  }, [task, deleteVideos, onConfirm]);
-
-  const handleCancel = useCallback(() => {
-    onCancel();
-  }, [onCancel]);
-
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={handleCancel}
+      onClick={() => onCancel()}
     >
       <div 
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
@@ -72,17 +64,27 @@ export const DeleteConfirmModal: React.FC<Props> = ({ task, onConfirm, onCancel 
         {/* Footer */}
         <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
           <button
-            onClick={handleCancel}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancel();
+            }}
             className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
           >
             取消
           </button>
-          
+
           <button
-            onClick={handleConfirm}
-            className="px-5 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isDeleting) {
+                setIsDeleting(true);
+                onConfirm(task, deleteVideos);
+              }
+            }}
+            disabled={isDeleting}
+            className="px-5 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors disabled:bg-red-300 disabled:cursor-not-allowed"
           >
-            确认删除
+            {isDeleting ? '删除中...' : '确认删除'}
           </button>
         </div>
       </div>

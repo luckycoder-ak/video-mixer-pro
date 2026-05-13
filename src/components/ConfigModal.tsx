@@ -242,7 +242,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
       case 'single':
         return '单视频模式：直接截取指定时长，保持原始宽高比';
       case 'dual':
-        return '双列模式：两个视频等比例缩放至宽度一半，居中放置，浅灰色背景填充';
+        return '双列模式：两个视频并排显示在中间区域，上下部分显示模糊背景';
       case 'quadrant':
         return '四宫格模式：四个视频等比例缩放至1/4宽度，田字格排列';
       default:

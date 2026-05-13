@@ -86,6 +86,7 @@ fn main() {
             video_processor::get_task,
             video_processor::pause_task,
             video_processor::resume_task,
+            video_processor::retry_task,
             video_processor::delete_task,
             video_processor::open_folder,
         ])

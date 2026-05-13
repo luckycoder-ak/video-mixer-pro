@@ -139,6 +139,12 @@ fn sanitize_task_name(name: &str) -> String {
     }
 }
 
+fn escape_ffmpeg_filter_path(path: &str) -> String {
+    path.replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace(':', "\\:")
+}
+
 struct TempDirGuard(PathBuf);
 
 impl Drop for TempDirGuard {
@@ -823,14 +829,16 @@ fn process_dual_mode_optimized(
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
+    let center_height = (output_height as f32 * 0.6) as u32;
+    
     let scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0xE5E7EB,setsar=sar=1,fps=30,format=yuv420p",
-        half_width, output_height, half_width, output_height
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p",
+        half_width, center_height, half_width, center_height
     );
 
-    // 背景模糊滤镜（增强模糊效果，使用更强的模糊度）
+    // 改进的背景模糊滤镜：使用单次强模糊效果
     let bg_blur_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0xE5E7EB,gblur=sigma=100,gblur=sigma=60,gblur=sigma=30,setsar=sar=1,fps=30,format=yuv420p",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,gblur=sigma=50,setsar=sar=1,fps=30,format=yuv420p",
         output_width, output_height, output_width, output_height
     );
 
@@ -867,7 +875,7 @@ fn process_dual_mode_optimized(
         right_scaled_str.clone(),
     ];
 
-    // 背景虚化处理参数
+    // 背景虚化处理参数：使用第一个视频作为背景源并进行模糊处理
     let bg_args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
@@ -906,10 +914,12 @@ fn process_dual_mode_optimized(
         return Err("已取消".to_string());
     }
 
-    // 修改合并滤镜，将左右视频叠加到虚化背景上
+    let top_offset = (output_height - center_height) / 2;
+
     let merge_filter = format!(
-        "[0:v][1:v]overlay=0:0[tmp];[tmp][2:v]overlay={}:0[out]",
-        half_width
+        "[1:v][2:v]hstack=inputs=2[center];\
+         [0:v][center]overlay=x=0:y={}:shortest=1[out]",
+        top_offset
     );
 
     let merge_args: Vec<String> = vec![
@@ -964,7 +974,7 @@ fn process_quadrant_mode_optimized(
     let num_cpus_str = num_cpus::get().to_string();
 
     let cell_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0xE5E7EB,setsar=sar=1,fps=30,format=yuv420p",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p",
         half_width, half_height, half_width, half_height
     );
 
@@ -1909,11 +1919,10 @@ fn add_subtitles(
     let is_ass_format = subtitle_ext == "ass" || subtitle_ext == "ssa";
 
     let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
+    let escaped_path = escape_ffmpeg_filter_path(&temp_subtitle_str);
     let filter_str = if is_ass_format {
-        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
         format!("ass='{}'", escaped_path)
     } else {
-        let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
         format!("subtitles='{}':si=0", escaped_path)
     };
 
@@ -1935,10 +1944,8 @@ fn add_subtitles(
         Err(e) => {
             error!("字幕添加失败: {}", e);
             let backup_filter = if is_ass_format {
-                let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
                 format!("ass='{}'", escaped_path)
             } else {
-                let escaped_path = escape_ffmpeg_filter(&temp_subtitle_str);
                 format!("subtitles='{}':si=0", escaped_path)
             };
 
@@ -1967,15 +1974,6 @@ fn add_subtitles(
 
     let _ = fs::remove_file(&temp_subtitle_path);
     Ok(())
-}
-
-fn escape_ffmpeg_filter(path: &str) -> String {
-    // FFmpeg 滤镜中的路径转义规则：
-    // 在单引号字符串内部：
-    // 1. 单引号需要用两个单引号转义（'' 表示一个单引号）
-    // 2. 反斜杠不需要转义（在单引号内无特殊含义）
-    // 3. 冒号是选项分隔符，但在单引号内不需要转义
-    path.replace("'", "''")
 }
 
 /**
@@ -2252,17 +2250,59 @@ pub fn resume_task(state: tauri::State<AppState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn delete_task(state: tauri::State<AppState>, id: String, delete_videos: bool) -> Result<(), String> {
-    info!("删除任务: id={}, delete_videos={}", id, delete_videos);
+pub fn retry_task(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    info!("重试任务: id={}", id);
+    set_pause(&id, false);
+    let mut tasks = state.tasks.write().map_err(|e| e.to_string())?;
+    if let Some(task) = tasks.iter_mut().find(|t| t.id == id) {
+        // 重置信务状态，允许重新执行
+        task.status = TaskStatus::Running;
+        task.completed_count = 0;
+        task.failed_count = 0;
+        task.failed_videos = vec![];
+        task.error_message = None;
+        task.current_video = 0;
+        task.started_at = Some(chrono::Utc::now());
+        task.completed_at = None;
+        // 清空进度步骤
+        for step in task.progress_steps.iter_mut() {
+            if step.status != StepStatus::Pending {
+                step.status = StepStatus::Pending;
+                step.error = None;
+            }
+        }
+        info!("任务 {} 已重置并准备重试", id);
+        // 释放锁后再保存到磁盘
+        drop(tasks);
+        if let Err(e) = save_tasks_to_disk(
+            &state.app_data_file,
+            &state.tasks,
+            &state.configs,
+            &state.used_tutorial_videos,
+        ) {
+            error!("保存任务状态失败: {}", e);
+        } else {
+            info!("成功保存任务状态到磁盘");
+        }
+        Ok(())
+    } else {
+        Err(format!("任务 {} 不存在", id))
+    }
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+pub fn delete_task(state: tauri::State<AppState>, id: String, deleteVideos: bool) -> Result<(), String> {
+    info!("删除任务: id={}, deleteVideos={}", id, deleteVideos);
     // S2：删除即取消，立即 kill ffmpeg
     signal_cancel(&id);
-    
+
     // 获取任务信息（包含output_folder）以便后续删除文件夹
     let task_to_delete: Option<Task> = {
         let tasks = state.tasks.read().map_err(|e| e.to_string())?;
         tasks.iter().find(|t| t.id == id).cloned()
     };
-    
+
     let mut tasks = state.tasks.write().map_err(|e| e.to_string())?;
     tasks.retain(|t| t.id != id);
     info!("任务 {} 已删除", id);
@@ -2270,7 +2310,7 @@ pub fn delete_task(state: tauri::State<AppState>, id: String, delete_videos: boo
     drop(tasks);
     
     // 如果需要删除视频文件夹
-    if delete_videos {
+    if deleteVideos {
         if let Some(task) = task_to_delete {
             let output_path = PathBuf::from(&task.output_folder);
             if output_path.exists() && output_path.is_dir() {
