@@ -21,28 +21,7 @@ function App() {
     message: '',
   });
 
-  // 全局点击监听器 - 用于调试
-  useEffect(() => {
-    const globalClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      console.log('=== 全局点击事件捕获 ===');
-      console.log('目标元素:', target);
-      console.log('目标元素类名:', target.className);
-      console.log('目标元素标签:', target.tagName);
-      
-      // 检查是否点击了按钮
-      if (target.tagName === 'BUTTON' || target.closest('button')) {
-        console.log('=== 点击了按钮元素 ===');
-        console.log('按钮文本:', target.textContent || target.closest('button')?.textContent);
-      }
-    };
-    
-    document.addEventListener('click', globalClick, true);
-    
-    return () => {
-      document.removeEventListener('click', globalClick, true);
-    };
-  }, []);
+
 
   useEffect(() => {
     loadData();
@@ -167,15 +146,7 @@ function App() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t" />
           )}
         </button>
-        <button
-          onClick={() => {
-            console.log('=== 测试按钮点击 ===');
-            alert('测试按钮点击成功！');
-          }}
-          className="px-4 py-2 bg-green-500 text-white rounded-lg mr-2"
-        >
-          测试日志
-        </button>
+
         <button
           onClick={() => setActiveTab('tasks')}
           className={`px-6 py-4 text-sm font-medium transition-all relative ${

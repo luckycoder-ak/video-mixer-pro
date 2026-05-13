@@ -52,11 +52,9 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   };
 
   const handleDeleteTask = (task: Task) => {
-    console.log('handleDeleteTask called, task:', task);
     setContextMenu(null);
     // 使用 setTimeout 确保上下文菜单及其遮罩层完全移除后再显示删除模态框
     setTimeout(() => {
-      console.log('Setting deleteModalTask after delay');
       setDeleteModalTask(task);
     }, 50);
   };
