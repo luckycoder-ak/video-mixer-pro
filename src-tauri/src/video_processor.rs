@@ -139,12 +139,6 @@ fn sanitize_task_name(name: &str) -> String {
     }
 }
 
-fn escape_ffmpeg_filter_path(path: &str) -> String {
-    path.replace('\\', "\\\\")
-        .replace('\'', "\\'")
-        .replace(':', "\\:")
-}
-
 struct TempDirGuard(PathBuf);
 
 impl Drop for TempDirGuard {
@@ -826,14 +820,13 @@ fn process_dual_mode_optimized(
     let bg_blur_str = bg_blur.to_string_lossy().to_string();
 
     let half_width = output_width / 2;
+    let half_height = output_height / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
-    let center_height = (output_height as f32 * 0.6) as u32;
-    
     let scale_filter = format!(
         "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p",
-        half_width, center_height, half_width, center_height
+        half_width, half_height, half_width, half_height
     );
 
     // 改进的背景模糊滤镜：使用单次强模糊效果
@@ -914,7 +907,7 @@ fn process_dual_mode_optimized(
         return Err("已取消".to_string());
     }
 
-    let top_offset = (output_height - center_height) / 2;
+    let top_offset = (output_height - half_height) / 2;
 
     let merge_filter = format!(
         "[1:v][2:v]hstack=inputs=2[center];\
@@ -1919,11 +1912,11 @@ fn add_subtitles(
     let is_ass_format = subtitle_ext == "ass" || subtitle_ext == "ssa";
 
     let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
-    let escaped_path = escape_ffmpeg_filter_path(&temp_subtitle_str);
+    let escaped_path = temp_subtitle_str.replace('\\', "\\\\").replace(":", "\\:");
     let filter_str = if is_ass_format {
-        format!("ass='{}'", escaped_path)
+        format!("ass={}", escaped_path)
     } else {
-        format!("subtitles='{}':si=0", escaped_path)
+        format!("subtitles={}:si=0", escaped_path)
     };
 
     let args: Vec<String> = vec![
@@ -1944,9 +1937,9 @@ fn add_subtitles(
         Err(e) => {
             error!("字幕添加失败: {}", e);
             let backup_filter = if is_ass_format {
-                format!("ass='{}'", escaped_path)
+                format!("ass={}", escaped_path)
             } else {
-                format!("subtitles='{}':si=0", escaped_path)
+                format!("subtitles={}:si=0", escaped_path)
             };
 
             let backup_args: Vec<String> = vec![
