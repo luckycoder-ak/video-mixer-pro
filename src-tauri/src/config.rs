@@ -9,12 +9,18 @@ fn default_transition_duration() -> f32 {
     0.2
 }
 
+fn default_scale_percent() -> u32 {
+    51
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSegment {
     pub segment_index: usize,
     pub source_folder: String,
     pub crop_mode: CropMode,
     pub duration: f32,
+    #[serde(default = "default_scale_percent")]
+    pub scale_percent: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

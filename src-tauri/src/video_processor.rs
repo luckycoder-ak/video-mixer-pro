@@ -7,6 +7,31 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
 
+fn find_ffmpeg_executable() -> String {
+    static FFMPEG_PATH: OnceLock<String> = OnceLock::new();
+    
+    FFMPEG_PATH.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            // 在 macOS 上，优先检查 ffmpeg-full (Homebrew keg-only)
+            let ffmpeg_full_paths = vec![
+                "/usr/local/opt/ffmpeg-full/bin/ffmpeg",
+                "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg",
+            ];
+            
+            for path in ffmpeg_full_paths {
+                if std::path::Path::new(path).exists() {
+                    info!("找到 ffmpeg-full: {}", path);
+                    return path.to_string();
+                }
+            }
+        }
+        
+        // 默认使用系统的 ffmpeg
+        "ffmpeg".to_string()
+    }).clone()
+}
+
 use log::{error, info, warn};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -332,13 +357,60 @@ fn push_step(
 }
 
 #[derive(Debug, Clone)]
+struct StepUpdate {
+    step_id: String,
+    name: String,
+    status: StepStatus,
+    error: Option<String>,
+}
+
+fn batch_update_steps(
+    tasks: &Arc<RwLock<Vec<Task>>>,
+    task_id: &str,
+    updates: Vec<StepUpdate>,
+) {
+    if let Ok(mut guard) = tasks.write() {
+        if let Some(task) = guard.iter_mut().find(|t| t.id == task_id) {
+            for update in updates {
+                if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == update.step_id) {
+                    step.status = update.status;
+                    step.error = update.error;
+                } else {
+                    task.progress_steps.push(TaskStep {
+                        id: update.step_id,
+                        name: update.name,
+                        status: update.status,
+                        error: update.error,
+                    });
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct VideoInfo {
     pub path: PathBuf,
     pub duration: f64,
 }
 
+fn video_files_cache() -> &'static RwLock<HashMap<String, Vec<PathBuf>>> {
+    static CACHE: OnceLock<RwLock<HashMap<String, Vec<PathBuf>>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
 pub fn get_video_files(folder: &str) -> Result<Vec<PathBuf>, String> {
+    let normalized_folder = normalize_folder_key(folder);
+    
+    // 尝试从缓存获取
+    {
+        let cache = video_files_cache().read().map_err(|e| e.to_string())?;
+        if let Some(videos) = cache.get(&normalized_folder) {
+            return Ok(videos.clone());
+        }
+    }
+
     let path = PathBuf::from(folder);
     if !path.exists() {
         return Err(format!("文件夹不存在: {}", folder));
@@ -358,6 +430,11 @@ pub fn get_video_files(folder: &str) -> Result<Vec<PathBuf>, String> {
     }
 
     videos.sort();
+    
+    // 将结果存入缓存
+    let mut cache = video_files_cache().write().map_err(|e| e.to_string())?;
+    cache.insert(normalized_folder, videos.clone());
+    
     Ok(videos)
 }
 
@@ -663,13 +740,14 @@ fn process_segment(
     start_offset: f32,
     duration: f32,
     temp_dir: &PathBuf,
+    scale_percent: u32,
 ) -> Result<(), String> {
     match crop_mode {
         config::CropMode::Single => {
             process_single_mode_segment(task_id, cancel, videos, output, output_width, output_height, start_offset, duration)
         }
         config::CropMode::Dual => {
-            process_dual_mode_optimized(task_id, cancel, videos, output, output_width, output_height, start_offset, duration, temp_dir)
+            process_dual_mode_optimized(task_id, cancel, videos, output, output_width, output_height, start_offset, duration, temp_dir, scale_percent)
         }
         config::CropMode::Quadrant => {
             process_quadrant_mode_optimized(task_id, cancel, videos, output, output_width, output_height, start_offset, duration, temp_dir)
@@ -805,6 +883,7 @@ fn process_dual_mode_optimized(
     start_offset: f32,
     duration: f32,
     temp_dir: &PathBuf,
+    scale_percent: u32,
 ) -> Result<(), String> {
     let input1_str = videos[0].to_string_lossy().to_string();
     let input2_str = videos[1].to_string_lossy().to_string();
@@ -824,9 +903,16 @@ fn process_dual_mode_optimized(
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
+    let scale_factor = scale_percent as f32 / 100.0;
+    let scale_target_w = (output_width as f32 * scale_factor) as u32;
+    let scale_target_h = (output_height as f32 * scale_factor) as u32;
+
+    info!("双列模式: scale_percent={}, 缩放目标尺寸={}x{}, 裁剪目标尺寸={}x{}",
+        scale_percent, scale_target_w, scale_target_h, half_width, half_height);
+
     let scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p",
-        half_width, half_height, half_width, half_height
+        "scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-{})/2:(ih-{})/2,setsar=sar=1,fps=30,format=yuv420p",
+        scale_target_w, scale_target_h, half_width, half_height, half_width, half_height
     );
 
     // 改进的背景模糊滤镜：使用单次强模糊效果
@@ -1064,7 +1150,8 @@ pub fn run_ffmpeg_with_cancel(
         return Err("已取消".to_string());
     }
 
-    let child = Command::new("ffmpeg")
+    let ffmpeg_path = find_ffmpeg_executable();
+    let child = Command::new(&ffmpeg_path)
         .args(args.iter().map(|s| s.as_str()).collect::<Vec<&str>>())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1125,7 +1212,8 @@ pub fn run_ffmpeg_with_cancel(
 // 兼容旧调用：保留无取消版本（仅 detect_best_encoder 等场景用，不长时间）。
 #[allow(dead_code)]
 pub fn run_ffmpeg_fast(args: &[&str]) -> Result<(), String> {
-    let output = Command::new("ffmpeg")
+    let ffmpeg_path = find_ffmpeg_executable();
+    let output = Command::new(&ffmpeg_path)
         .args(args)
         .output()
         .map_err(|e| format!("执行 FFmpeg 失败: {}", e))?;
@@ -1405,11 +1493,13 @@ fn process_single_mode(
     root_folder: &str,
     enable_transition: bool,
     transition_duration: f32,
+    // 任务级别共享的临时目录
+    temp_dir: &PathBuf,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
-    let temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", Uuid::new_v4()));
-    fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let _temp_dir_guard = TempDirGuard(temp_dir.clone());
+    // 使用任务级别共享的临时目录，每个视频在其中创建独立子目录
+    let video_temp_dir = temp_dir.join(format!("video_{}", video_index));
+    fs::create_dir_all(&video_temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
 
@@ -1480,7 +1570,7 @@ fn process_single_mode(
         let process_step_id = format!("video_{}__segment_{}", video_index, i + 1);
         push_step(tasks, task_id, &process_step_id, &format!("视频{} - 处理片段{}", video_index, i + 1), StepStatus::Running, None);
 
-        let trimmed_segment = temp_dir.join(format!("segment_{}.mp4", i));
+        let trimmed_segment = video_temp_dir.join(format!("segment_{}.mp4", i));
         match process_segment(
             task_id,
             cancel,
@@ -1490,7 +1580,8 @@ fn process_single_mode(
             (output_width, output_height),
             segment_offsets[i],
             segment_durations[i],
-            &temp_dir,
+            &video_temp_dir,
+            segment.scale_percent,
         ) {
             Ok(()) => {
                 push_step(tasks, task_id, &process_step_id, &format!("视频{} - 处理片段{}", video_index, i + 1), StepStatus::Completed, None);
@@ -1548,18 +1639,15 @@ fn process_single_mode(
         available[idx].clone()
     };
 
-    // 立即登记为已用并持久化，防止后续任务重复选取
+    // 立即登记为已用（内存中），防止后续视频重复选取，持久化留到任务结束时统一处理
     let tutorial_key = tutorial_video.to_string_lossy().to_string();
     {
         if let Ok(mut guard) = tutorial_used_global.write() {
             guard.insert(tutorial_key.clone());
         }
     }
-    if let Err(e) = persist_tutorial_used(app_data_file, tutorial_used_global) {
-        warn!("持久化教程已用素材失败（不影响本次生成）: {}", e);
-    }
 
-    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
+    let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
 
     // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容
     let tutorial_scale_filter = format!(
@@ -1606,8 +1694,8 @@ fn process_single_mode(
     }
 
     let output_path = output_dir.join(output_filename);
-    let temp_output_path = temp_dir.join("temp_output.mp4");
-    let temp_with_tutorial_path = temp_dir.join("temp_with_tutorial.mp4");
+    let temp_output_path = video_temp_dir.join("temp_output.mp4");
+    let temp_with_tutorial_path = video_temp_dir.join("temp_with_tutorial.mp4");
 
     let mut segment_durations: Vec<f32> = Vec::new();
     for (i, segment_file) in segment_files.iter().enumerate() {
@@ -1693,7 +1781,7 @@ fn process_single_mode(
     }
 
     // 处理模板片段和教程片段的合并（仅视频转场，音频稍后添加）
-    let tutorial_scaled = temp_dir.join("tutorial_scaled.mp4");
+    let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
     if tutorial_scaled.exists() {
         let concat_step_id = format!("video_{}__concat", video_index);
         
@@ -1791,7 +1879,7 @@ fn process_single_mode(
             let supplement_step_id = format!("video_{}__supplement", video_index);
             push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
 
-            let temp_supplemented_path = temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
+            let temp_supplemented_path = video_temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
 
             match supplement_video_with_random_clips(
                 task_id,
@@ -1824,7 +1912,7 @@ fn process_single_mode(
         let encoder = detect_best_encoder();
         let num_cpus_str = num_cpus::get().to_string();
         // 使用不同的临时文件作为输出，避免输入输出相同
-        let temp_with_audio_path = temp_dir.join("temp_with_audio.mp4");
+        let temp_with_audio_path = video_temp_dir.join("temp_with_audio.mp4");
 
         let args: Vec<String> = vec![
             "-hide_banner".to_string(),
@@ -2018,6 +2106,7 @@ fn add_subtitles(
         }
         Err(e) => {
             error!("subtitles/ass 滤镜失败: {}", e);
+            warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
         }
     }
 
@@ -2061,6 +2150,7 @@ fn add_subtitles(
         Ok(_) => info!("drawtext 字幕添加成功: {:?}", output_path),
         Err(e) => {
             error!("drawtext 字幕方案也失败: {}", e);
+            warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
             fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
         }
     }
@@ -2161,85 +2251,204 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
         push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Completed, None);
 
-        let mut used_per_folder: HashMap<String, HashSet<String>> = HashMap::new();
-
-        for i in 0..count {
-            // 暂停等待
-            while pause_flag.load(Ordering::SeqCst) && !cancel_flag.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(300));
-            }
-            if cancel_flag.load(Ordering::SeqCst) {
-                info!("任务 {} 已取消，提前结束", task_id);
-                break;
-            }
-
-            info!("处理第 {} 个视频，共 {} 个", i + 1, count);
-            {
-                let mut tasks = tasks_clone.write().unwrap();
-                for t in tasks.iter_mut() {
-                    if t.id == task_id {
-                        t.current_video = i + 1;
-                        break;
-                    }
+        // 创建任务级别的共享临时目录
+        let task_temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", task_id));
+        if let Err(e) = fs::create_dir_all(&task_temp_dir) {
+            error!("创建任务临时目录失败: {}", e);
+            push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
+            let mut tasks = tasks_clone.write().unwrap();
+            for t in tasks.iter_mut() {
+                if t.id == task_id {
+                    t.status = TaskStatus::Error;
+                    t.error_message = Some(format!("创建临时目录失败: {}", e));
+                    break;
                 }
             }
-
-            let video_step_id = format!("video_{}", i + 1);
-            push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 开始处理", i + 1), StepStatus::Running, None);
-
-            let output_filename = format!("{}_{}.mp4", config_clone.name, i + 1);
-
-            match process_single_mode(
-                &task_id,
-                &cancel_flag,
-                &tasks_clone,
-                i + 1,
-                &config_clone.template_segments,
-                &config_clone.tutorial_folder,
-                &config_clone.video_ratio,
-                &config_clone.audio_path,
-                config_clone.audio_duration,
-                &config_clone.subtitle_path,
-                &output_dir,
-                &output_filename,
-                &mut used_per_folder,
-                &tutorial_used_global,
-                &app_data_file,
-                &config_clone.root_folder,
-                config_clone.enable_transition,
-                config_clone.transition_duration,
-            ) {
-                Ok(()) => {
-                    info!("视频 {} 处理成功", i + 1);
-                    push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 完成", i + 1), StepStatus::Completed, None);
-                    let mut tasks = tasks_clone.write().unwrap();
-                    for t in tasks.iter_mut() {
-                        if t.id == task_id {
-                            t.completed_count += 1;
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("视频 {} 处理失败: {}", i + 1, e);
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 已取消", i + 1), StepStatus::Error, Some(e.clone()));
-                        // 取消时直接退出循环
-                        break;
-                    }
-                    // S3：单条失败仅记录，不中断后续视频
-                    push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 失败", i + 1), StepStatus::Error, Some(e.clone()));
-                    let mut tasks = tasks_clone.write().unwrap();
-                    for t in tasks.iter_mut() {
-                        if t.id == task_id {
-                            t.failed_count += 1;
-                            t.failed_videos.push(format!("视频{}: {}", i + 1, e));
-                            break;
-                        }
-                    }
-                }
-            }
+            unregister_task(&task_id);
+            return;
         }
+
+        // 并发处理准备
+        let (tx, rx) = std::sync::mpsc::channel();
+        let rx = Arc::new(Mutex::new(rx));
+        let completed_count = Arc::new(Mutex::new(0));
+        let failed_count = Arc::new(Mutex::new(0));
+        let failed_videos = Arc::new(Mutex::new(Vec::new()));
+        let used_per_folder = Arc::new(Mutex::new(HashMap::<String, HashSet<String>>::new()));
+        let active_workers = Arc::new(Mutex::new(0));
+        
+        // 确定工作线程数量（与FFmpeg并发限制一致）
+        let worker_count = {
+            let s = ffmpeg_semaphore();
+            let inner = s.inner.lock().unwrap();
+            *inner
+        };
+        info!("任务 {} 使用 {} 个工作线程", task_id, worker_count);
+
+        // 发送任务到channel
+        for i in 0..count {
+            tx.send(i + 1).unwrap();
+        }
+        drop(tx); // 关闭发送端
+
+        // 启动工作线程
+        let mut handles = Vec::new();
+        for worker_id in 0..worker_count {
+            let rx = rx.clone();
+            let task_id = task_id.clone();
+            let cancel_flag = cancel_flag.clone();
+            let pause_flag = pause_flag.clone();
+            let tasks_clone = tasks_clone.clone();
+            let config_clone = config_clone.clone();
+            let output_dir = output_dir.clone();
+            let task_temp_dir = task_temp_dir.clone();
+            let tutorial_used_global = tutorial_used_global.clone();
+            let app_data_file = app_data_file.clone();
+            let completed_count = completed_count.clone();
+            let failed_count = failed_count.clone();
+            let failed_videos = failed_videos.clone();
+            let used_per_folder = used_per_folder.clone();
+            let active_workers = active_workers.clone();
+
+            let handle = thread::spawn(move || {
+                *active_workers.lock().unwrap() += 1;
+                info!("工作线程 {} 启动", worker_id);
+                
+                loop {
+                    let video_index = {
+                        let rx_guard = rx.lock().unwrap();
+                        match rx_guard.recv() {
+                            Ok(idx) => idx,
+                            Err(_) => break, // channel已关闭，退出循环
+                        }
+                    };
+                    // 检查取消
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        info!("工作线程 {} 收到取消信号，退出", worker_id);
+                        break;
+                    }
+
+                    // 暂停等待
+                    while pause_flag.load(Ordering::SeqCst) && !cancel_flag.load(Ordering::SeqCst) {
+                        thread::sleep(Duration::from_millis(300));
+                    }
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        info!("工作线程 {} 收到取消信号，退出", worker_id);
+                        break;
+                    }
+
+                    info!("工作线程 {} 处理第 {} 个视频", worker_id, video_index);
+
+                    let video_step_id = format!("video_{}", video_index);
+                    push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 开始处理", video_index), StepStatus::Running, None);
+
+                    let output_filename = format!("{}_{}.mp4", config_clone.name, video_index);
+
+                    // 为每个视频创建独立的临时子目录
+                    let video_temp_dir = task_temp_dir.join(format!("video_{}", video_index));
+                    if let Err(e) = fs::create_dir_all(&video_temp_dir) {
+                        error!("创建视频 {} 临时目录失败: {}", video_index, e);
+                        let mut failed = failed_videos.lock().unwrap();
+                        failed.push(format!("视频{}: 创建临时目录失败 - {}", video_index, e));
+                        let mut fail_count = failed_count.lock().unwrap();
+                        *fail_count += 1;
+                        push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 失败", video_index), StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
+                        continue;
+                    }
+
+                    // 获取used_per_folder的锁
+                    let mut used_per_folder_guard = used_per_folder.lock().unwrap();
+                    let mut local_used_per_folder = used_per_folder_guard.clone();
+                    drop(used_per_folder_guard);
+
+                    let result = process_single_mode(
+                        &task_id,
+                        &cancel_flag,
+                        &tasks_clone,
+                        video_index,
+                        &config_clone.template_segments,
+                        &config_clone.tutorial_folder,
+                        &config_clone.video_ratio,
+                        &config_clone.audio_path,
+                        config_clone.audio_duration,
+                        &config_clone.subtitle_path,
+                        &output_dir,
+                        &output_filename,
+                        &mut local_used_per_folder,
+                        &tutorial_used_global,
+                        &app_data_file,
+                        &config_clone.root_folder,
+                        config_clone.enable_transition,
+                        config_clone.transition_duration,
+                        &video_temp_dir,
+                    );
+
+                    // 合并used_per_folder的更新
+                    let mut used_per_folder_guard = used_per_folder.lock().unwrap();
+                    for (key, values) in local_used_per_folder {
+                        let entry = used_per_folder_guard.entry(key).or_insert_with(HashSet::new);
+                        entry.extend(values);
+                    }
+                    drop(used_per_folder_guard);
+
+                    // 清理视频临时目录
+                    let _ = fs::remove_dir_all(&video_temp_dir);
+
+                    match result {
+                        Ok(()) => {
+                            info!("视频 {} 处理成功", video_index);
+                            push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 完成", video_index), StepStatus::Completed, None);
+                            let mut count = completed_count.lock().unwrap();
+                            *count += 1;
+                            // 更新任务状态
+                            let mut tasks = tasks_clone.write().unwrap();
+                            for t in tasks.iter_mut() {
+                                if t.id == task_id {
+                                    t.completed_count = *count;
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("视频 {} 处理失败: {}", video_index, e);
+                            if cancel_flag.load(Ordering::SeqCst) {
+                                push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 已取消", video_index), StepStatus::Error, Some(e.clone()));
+                                break;
+                            }
+                            push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 失败", video_index), StepStatus::Error, Some(e.clone()));
+                            let mut failed = failed_videos.lock().unwrap();
+                            failed.push(format!("视频{}: {}", video_index, e));
+                            let mut fail_count = failed_count.lock().unwrap();
+                            *fail_count += 1;
+                            // 更新任务状态
+                            let mut tasks = tasks_clone.write().unwrap();
+                            for t in tasks.iter_mut() {
+                                if t.id == task_id {
+                                    t.failed_count = *fail_count;
+                                    t.failed_videos = failed.clone();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                *active_workers.lock().unwrap() -= 1;
+                info!("工作线程 {} 退出", worker_id);
+            });
+
+            handles.push(handle);
+        }
+
+        // 等待所有工作线程完成
+        for handle in handles {
+            let _ = handle.join();
+        }
+
+        // 获取最终的计数
+        let final_completed = *completed_count.lock().unwrap();
+        let final_failed = *failed_count.lock().unwrap();
+        let final_failed_videos = failed_videos.lock().unwrap().clone();
 
         // 终态决定
         push_step(&tasks_clone, &task_id, "finish", "任务完成", StepStatus::Completed, None);
@@ -2248,28 +2457,31 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             for t in tasks.iter_mut() {
                 if t.id == task_id {
                     t.completed_at = Some(chrono::Utc::now());
+                    t.completed_count = final_completed;
+                    t.failed_count = final_failed;
+                    t.failed_videos = final_failed_videos.clone();
                     if cancel_flag.load(Ordering::SeqCst) {
                         t.status = TaskStatus::Error;
                         if t.error_message.is_none() {
                             t.error_message = Some("任务已取消".to_string());
                         }
-                    } else if t.failed_count == 0 {
+                    } else if final_failed == 0 {
                         t.status = TaskStatus::Completed;
-                    } else if t.completed_count == 0 {
+                    } else if final_completed == 0 {
                         t.status = TaskStatus::Error;
-                        let detail = t.failed_videos.first().cloned().unwrap_or_default();
+                        let detail = final_failed_videos.first().cloned().unwrap_or_default();
                         t.error_message = Some(if detail.is_empty() {
-                            format!("全部 {} 个视频处理失败", t.failed_count)
+                            format!("全部 {} 个视频处理失败", final_failed)
                         } else {
-                            format!("全部 {} 个视频处理失败；首条失败: {}", t.failed_count, detail)
+                            format!("全部 {} 个视频处理失败；首条失败: {}", final_failed, detail)
                         });
                     } else {
                         t.status = TaskStatus::Partial;
-                        let detail = t.failed_videos.first().cloned().unwrap_or_default();
+                        let detail = final_failed_videos.first().cloned().unwrap_or_default();
                         t.error_message = Some(if detail.is_empty() {
-                            format!("成功 {} / 失败 {}", t.completed_count, t.failed_count)
+                            format!("成功 {} / 失败 {}", final_completed, final_failed)
                         } else {
-                            format!("成功 {} / 失败 {}；首条失败: {}", t.completed_count, t.failed_count, detail)
+                            format!("成功 {} / 失败 {}；首条失败: {}", final_completed, final_failed, detail)
                         });
                     }
                     break;
@@ -2283,6 +2495,14 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         }
 
         unregister_task(&task_id);
+
+        // 清理任务级别的临时目录
+        if let Err(e) = fs::remove_dir_all(&task_temp_dir) {
+            warn!("清理任务临时目录失败: {}", e);
+        } else {
+            info!("任务临时目录已清理: {:?}", task_temp_dir);
+        }
+
         info!("任务 {} 全部完成", task_id);
     });
 
