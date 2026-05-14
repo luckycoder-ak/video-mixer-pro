@@ -73,6 +73,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             source_folder: '',
             crop_mode: 'single' as const,
             duration: avgDuration,
+            scale_percent: 51,
           };
 
       if (!existing) {
@@ -497,6 +498,29 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                     <span>{getCropModeHint(segment.crop_mode)}</span>
                   </div>
                 </div>
+
+                {segment.crop_mode === 'dual' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      双列缩放比例 (%) <span className="text-gray-400">(≥50)</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={segment.scale_percent}
+                      onChange={(e) => handleSegmentChange(index, 'scale_percent', parseInt(e.target.value) || 51)}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value) || 51;
+                        if (val < 50) {
+                          handleSegmentChange(index, 'scale_percent', 50);
+                        }
+                      }}
+                      min="50"
+                      step="1"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">视频按此比例缩放后裁剪到半屏区域，值越大画面显示越多</p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">片段时间点 (秒)</label>

@@ -903,16 +903,20 @@ fn process_dual_mode_optimized(
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
+    // 严格按照表格逻辑：
+    // 缩放目标尺寸 = (output_width * scale_percent%, output_height * scale_percent%)
+    // 裁剪目标尺寸 = (half_width, output_height * scale_percent%)
     let scale_factor = scale_percent as f32 / 100.0;
-    let scale_target_w = (output_width as f32 * scale_factor) as u32;
-    let scale_target_h = (output_height as f32 * scale_factor) as u32;
+    let target_scale_w = (output_width as f32 * scale_factor) as u32;
+    let target_scale_h = (output_height as f32 * scale_factor) as u32;
+    let crop_h = target_scale_h;
 
     info!("双列模式: scale_percent={}, 缩放目标尺寸={}x{}, 裁剪目标尺寸={}x{}",
-        scale_percent, scale_target_w, scale_target_h, half_width, half_height);
+        scale_percent, target_scale_w, target_scale_h, half_width, crop_h);
 
     let scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-{})/2:(ih-{})/2,setsar=sar=1,fps=30,format=yuv420p",
-        scale_target_w, scale_target_h, half_width, half_height, half_width, half_height
+        "scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-{})/2:0,setsar=sar=1,fps=30,format=yuv420p",
+        target_scale_w, target_scale_h, half_width, crop_h, half_width
     );
 
     // 改进的背景模糊滤镜：使用单次强模糊效果
@@ -993,12 +997,13 @@ fn process_dual_mode_optimized(
         return Err("已取消".to_string());
     }
 
-    let top_offset = (output_height - half_height) / 2;
-
+    // 左右视频拼接后居中放置到模糊背景上
+    let center_h = crop_h;
+    let y_offset = (output_height as i32 - center_h as i32) / 2;
     let merge_filter = format!(
         "[1:v][2:v]hstack=inputs=2[center];\
          [0:v][center]overlay=x=0:y={}:shortest=1[out]",
-        top_offset
+        y_offset
     );
 
     let merge_args: Vec<String> = vec![
