@@ -1876,6 +1876,82 @@ fn process_single_mode(
     Ok(())
 }
 
+struct SrtEntry {
+    start_secs: f64,
+    end_secs: f64,
+    text: String,
+}
+
+fn parse_srt_timestamp(ts: &str) -> Result<f64, String> {
+    let ts = ts.trim().replace(',', ".");
+    let parts: Vec<&str> = ts.split(':').collect();
+    if parts.len() != 3 {
+        return Err(format!("无效的 SRT 时间戳: {}", ts));
+    }
+    let hours: f64 = parts[0].parse().map_err(|_| format!("无效的小时: {}", parts[0]))?;
+    let minutes: f64 = parts[1].parse().map_err(|_| format!("无效的分钟: {}", parts[1]))?;
+    let seconds: f64 = parts[2].parse().map_err(|_| format!("无效的秒: {}", parts[2]))?;
+    Ok(hours * 3600.0 + minutes * 60.0 + seconds)
+}
+
+fn parse_srt_content(content: &str) -> Result<Vec<SrtEntry>, String> {
+    let mut entries = Vec::new();
+    let normalized = content.replace("\r\n", "\n");
+    let blocks: Vec<&str> = normalized.split("\n\n").collect();
+
+    for block in blocks {
+        let block = block.trim();
+        if block.is_empty() {
+            continue;
+        }
+        let lines: Vec<&str> = block.lines().collect();
+        if lines.len() < 3 {
+            continue;
+        }
+        let ts_line = lines[1].trim();
+        let ts_parts: Vec<&str> = ts_line.split("-->").collect();
+        if ts_parts.len() != 2 {
+            continue;
+        }
+        let start_secs = parse_srt_timestamp(ts_parts[0])?;
+        let end_secs = parse_srt_timestamp(ts_parts[1])?;
+        let text = lines[2..].join("\\n");
+        entries.push(SrtEntry { start_secs, end_secs, text });
+    }
+
+    if entries.is_empty() {
+        return Err("SRT 文件中没有有效的字幕条目".to_string());
+    }
+    Ok(entries)
+}
+
+fn escape_drawtext_text(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace(':', "\\:")
+        .replace('%', "\\%")
+        .replace('{', "\\{")
+        .replace('}', "\\}")
+}
+
+fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    for entry in entries {
+        let escaped_text = escape_drawtext_text(&entry.text);
+        let start = entry.start_secs;
+        let end = entry.end_secs;
+
+        let drawtext = format!(
+            "drawtext=fontfile='{}':text='{}':fontsize=28:fontcolor=white@0.92:borderw=2.5:bordercolor=black@0.55:line_spacing=6:x=(w-tw)/2:y=h-th-80:enable='between(t,{},{})'",
+            fontfile, escaped_text, start, end
+        );
+        parts.push(drawtext);
+    }
+
+    parts.join(",")
+}
+
 fn add_subtitles(
     task_id: &str,
     cancel: &Arc<AtomicBool>,
@@ -1914,16 +1990,65 @@ fn add_subtitles(
     let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
     let escaped_path = temp_subtitle_str.replace('\\', "\\\\").replace(":", "\\:");
     let filter_str = if is_ass_format {
-        format!("ass={}", escaped_path)
+        format!("ass=filename={}", escaped_path)
     } else {
-        format!("subtitles={}:si=0", escaped_path)
+        format!("subtitles=filename={}:si=0", escaped_path)
     };
 
     let args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
-        "-i".to_string(), input_str,
+        "-i".to_string(), input_str.clone(),
         "-vf".to_string(), filter_str,
+        "-c:v".to_string(), encoder.video_codec.to_string(),
+        "-c:a".to_string(), "copy".to_string(),
+        "-pix_fmt".to_string(), "yuv420p".to_string(),
+        "-movflags".to_string(), "+faststart".to_string(),
+        "-y".to_string(),
+        output_str.clone(),
+    ];
+
+    let result = run_ffmpeg_with_cancel(task_id, cancel, &args);
+    let _ = fs::remove_file(&temp_subtitle_path);
+
+    match result {
+        Ok(_) => {
+            info!("字幕添加成功: {:?}", output_path);
+            return Ok(());
+        }
+        Err(e) => {
+            error!("subtitles/ass 滤镜失败: {}", e);
+        }
+    }
+
+    // subtitles/ass 滤镜不可用，回退到 drawtext 方案
+    if is_ass_format {
+        warn!("ASS 字幕回退到 drawtext 方案不支持，跳过字幕");
+        fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
+        return Ok(());
+    }
+
+    info!("尝试 drawtext 字幕方案");
+    let srt_content = fs::read_to_string(subtitle_path).map_err(|e| format!("读取字幕文件失败: {}", e))?;
+    let entries = match parse_srt_content(&srt_content) {
+        Ok(e) => e,
+        Err(e) => {
+            error!("SRT 解析失败: {}", e);
+            fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
+            return Ok(());
+        }
+    };
+
+    let fontfile = "/System/Library/Fonts/STHeiti Light.ttc";
+    let drawtext_filter = build_drawtext_subtitle_filter(&entries, fontfile);
+
+    info!("drawtext 滤镜已构建，共 {} 条字幕", entries.len());
+
+    let drawtext_args: Vec<String> = vec![
+        "-hide_banner".to_string(),
+        "-loglevel".to_string(), "error".to_string(),
+        "-i".to_string(), input_str,
+        "-vf".to_string(), drawtext_filter,
         "-c:v".to_string(), encoder.video_codec.to_string(),
         "-c:a".to_string(), "copy".to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
@@ -1932,40 +2057,14 @@ fn add_subtitles(
         output_str,
     ];
 
-    match run_ffmpeg_with_cancel(task_id, cancel, &args) {
-        Ok(_) => info!("字幕添加成功: {:?}", output_path),
+    match run_ffmpeg_with_cancel(task_id, cancel, &drawtext_args) {
+        Ok(_) => info!("drawtext 字幕添加成功: {:?}", output_path),
         Err(e) => {
-            error!("字幕添加失败: {}", e);
-            let backup_filter = if is_ass_format {
-                format!("ass={}", escaped_path)
-            } else {
-                format!("subtitles={}:si=0", escaped_path)
-            };
-
-            let backup_args: Vec<String> = vec![
-                "-hide_banner".to_string(),
-                "-loglevel".to_string(), "error".to_string(),
-                "-i".to_string(), input_path.to_string_lossy().to_string(),
-                "-vf".to_string(), backup_filter,
-                "-c:v".to_string(), encoder.video_codec.to_string(),
-                "-c:a".to_string(), "copy".to_string(),
-                "-pix_fmt".to_string(), "yuv420p".to_string(),
-                "-movflags".to_string(), "+faststart".to_string(),
-                "-y".to_string(),
-                output_path.to_string_lossy().to_string(),
-            ];
-
-            match run_ffmpeg_with_cancel(task_id, cancel, &backup_args) {
-                Ok(_) => info!("备用字幕方案成功"),
-                Err(e2) => {
-                    error!("备用字幕方案也失败: {}", e2);
-                    fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-                }
-            }
+            error!("drawtext 字幕方案也失败: {}", e);
+            fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
         }
     }
 
-    let _ = fs::remove_file(&temp_subtitle_path);
     Ok(())
 }
 
