@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 fn find_ffmpeg_executable() -> String {
     static FFMPEG_PATH: OnceLock<String> = OnceLock::new();
@@ -420,19 +420,55 @@ pub struct VideoInfo {
     pub duration: f64,
 }
 
-fn video_files_cache() -> &'static RwLock<HashMap<String, Vec<PathBuf>>> {
-    static CACHE: OnceLock<RwLock<HashMap<String, Vec<PathBuf>>>> = OnceLock::new();
+/// 视频文件列表缓存条目。
+/// - `videos`：扫描得到的视频文件路径列表
+/// - `dir_mtime`：扫描时记录的目录修改时间（用于检测文件增删）
+/// - `cached_at`：缓存写入时刻（用于兜底 TTL）
+#[derive(Clone)]
+struct VideoCacheEntry {
+    videos: Vec<PathBuf>,
+    dir_mtime: Option<SystemTime>,
+    cached_at: Instant,
+}
+
+fn video_files_cache() -> &'static RwLock<HashMap<String, VideoCacheEntry>> {
+    static CACHE: OnceLock<RwLock<HashMap<String, VideoCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
+/// 缓存兜底 TTL：即使 mtime 检测异常，超过该时长也会强制重扫
+const VIDEO_CACHE_TTL: Duration = Duration::from_secs(5);
+
+/// 扫描指定文件夹下的视频文件列表
+///
+/// # 缓存策略
+/// 1. 命中缓存：当前目录 mtime 与缓存记录的 mtime 一致 且 缓存未超过 [`VIDEO_CACHE_TTL`]
+/// 2. 失效重扫：目录被新增/删除/重命名文件后 mtime 会变化 → 自动失效
+/// 3. 兜底 TTL：极少数文件系统 mtime 不更新时，5s 后强制重扫
+///
+/// # Arguments
+/// - `folder`: 要扫描的文件夹绝对/相对路径
+///
+/// # Returns
+/// - `Ok(Vec<PathBuf>)`: 该文件夹下所有视频文件（按文件名排序）
+/// - `Err(String)`: 文件夹不存在或读取失败
 pub fn get_video_files(folder: &str) -> Result<Vec<PathBuf>, String> {
     let normalized_folder = normalize_folder_key(folder);
-    
-    // 尝试从缓存获取
+
+    // 当前目录的 mtime（失败时 None，按"始终重扫"处理）
+    let current_mtime: Option<SystemTime> = fs::metadata(folder)
+        .and_then(|m| m.modified())
+        .ok();
+
+    // 尝试命中缓存：mtime 必须一致 且 未超过 TTL
     {
         let cache = video_files_cache().read().map_err(|e| e.to_string())?;
-        if let Some(videos) = cache.get(&normalized_folder) {
-            return Ok(videos.clone());
+        if let Some(entry) = cache.get(&normalized_folder) {
+            let mtime_match = entry.dir_mtime == current_mtime;
+            let ttl_ok = entry.cached_at.elapsed() < VIDEO_CACHE_TTL;
+            if mtime_match && ttl_ok {
+                return Ok(entry.videos.clone());
+            }
         }
     }
 
@@ -455,11 +491,18 @@ pub fn get_video_files(folder: &str) -> Result<Vec<PathBuf>, String> {
     }
 
     videos.sort();
-    
-    // 将结果存入缓存
+
+    // 写入缓存（含 mtime 与时间戳）
     let mut cache = video_files_cache().write().map_err(|e| e.to_string())?;
-    cache.insert(normalized_folder, videos.clone());
-    
+    cache.insert(
+        normalized_folder,
+        VideoCacheEntry {
+            videos: videos.clone(),
+            dir_mtime: current_mtime,
+            cached_at: Instant::now(),
+        },
+    );
+
     Ok(videos)
 }
 
