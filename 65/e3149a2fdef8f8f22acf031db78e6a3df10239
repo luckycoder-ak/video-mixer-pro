@@ -1,0 +1,186 @@
+src-tauri/tauri.conf.json
+  ec5ad4d62ef8aa17 40-42 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0825bf98702bc0d254cf43","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[40,42]}]}]}
+src-tauri/src/video_processor.rs
+  ec5ad4d62ef8aa17 12,14-38,41,46,54-55 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0825bf98702bc0d254cf43","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":12},{"Range":[14,38]},{"Single":41},{"Single":46},{"Range":[54,55]}]}]}
+.github/workflows/build-windows.yml
+  ec5ad4d62ef8aa17 36-54 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0825bf98702bc0d254cf43","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[36,54]}]}]}
+.gitignore
+  ec5ad4d62ef8aa17 25-27 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0825bf98702bc0d254cf43","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[25,27]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "65e3149a2fdef8f8f22acf031db78e6a3df10239",
+  "prompts": {
+    "ec5ad4d62ef8aa17": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0812b698702bc0d254cd07",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "huwucheng <huwucheng@bytedance.com>",
+      "messages": [],
+      "total_additions": 108,
+      "total_deletions": 58,
+      "accepted_lines": 57,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    ".github/workflows/build-windows.yml": [
+      {
+        "hash": "ec5ad4d62ef8aa17",
+        "line_ranges": [
+          {
+            "Range": [
+              36,
+              54
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0825bf98702bc0d254cf43",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  36,
+                  54
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    ".gitignore": [
+      {
+        "hash": "ec5ad4d62ef8aa17",
+        "line_ranges": [
+          {
+            "Range": [
+              25,
+              27
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0825bf98702bc0d254cf43",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  25,
+                  27
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/video_processor.rs": [
+      {
+        "hash": "ec5ad4d62ef8aa17",
+        "line_ranges": [
+          {
+            "Single": 12
+          },
+          {
+            "Range": [
+              14,
+              38
+            ]
+          },
+          {
+            "Single": 41
+          },
+          {
+            "Single": 46
+          },
+          {
+            "Range": [
+              54,
+              55
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0825bf98702bc0d254cf43",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 12
+              },
+              {
+                "Range": [
+                  14,
+                  38
+                ]
+              },
+              {
+                "Single": 41
+              },
+              {
+                "Single": 46
+              },
+              {
+                "Range": [
+                  54,
+                  55
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/tauri.conf.json": [
+      {
+        "hash": "ec5ad4d62ef8aa17",
+        "line_ranges": [
+          {
+            "Range": [
+              40,
+              42
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0825bf98702bc0d254cf43",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  40,
+                  42
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "ec5ad4d62ef8aa17": {
+      "tool": "trae",
+      "conversation_id": "6a0812b698702bc0d254cd07",
+      "session_id": "6a0812b698702bc0d254cd07",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
