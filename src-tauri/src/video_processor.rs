@@ -773,8 +773,9 @@ fn process_single_mode_segment(
     let num_cpus_str = num_cpus::get().to_string();
 
     // S7：所有片段提前对齐 setsar/fps/format，single 段不带音轨（统一在 xfade 后挂背景音）
+    // 修复 NVENC "Invalid color range"：通过 setrange=tv 显式标注色彩范围元数据，避免 filter 链 reinit 失败
     let filter_str = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,setrange=tv",
         output_width, output_height, output_width, output_height
     );
 
@@ -850,9 +851,9 @@ fn supplement_video_with_random_clips(
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
-    // 构建 filter_complex：第一个视频直接输出，第二个视频截取并缩放
+    // 构建 filter_complex：第一个视频直接输出，第二个视频截取并缩放（规范化色彩范围）
     let filter_complex = format!(
-        "[1:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,trim=start={}:duration={},setpts=PTS-STARTPTS[v1];[0:v][v1]concat=n=2:v=1:a=0",
+        "[1:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,setrange=tv,trim=start={}:duration={},setpts=PTS-STARTPTS[v1];[0:v][v1]concat=n=2:v=1:a=0",
         output_width, output_height, output_width, output_height, start_offset, use_duration
     );
 
@@ -882,24 +883,15 @@ fn process_dual_mode_optimized(
     output_height: u32,
     start_offset: f32,
     duration: f32,
-    temp_dir: &PathBuf,
+    _temp_dir: &PathBuf,
     scale_percent: u32,
 ) -> Result<(), String> {
     let input1_str = videos[0].to_string_lossy().to_string();
     let input2_str = videos[1].to_string_lossy().to_string();
     let output_str = output.to_string_lossy().to_string();
 
-    // S4：中间 mp4 放入任务级 temp_dir，由 TempDirGuard 统一回收
-    let left_scaled = temp_dir.join(format!("left_scaled_{}.mp4", Uuid::new_v4()));
-    let right_scaled = temp_dir.join(format!("right_scaled_{}.mp4", Uuid::new_v4()));
-    let bg_blur = temp_dir.join(format!("bg_blur_{}.mp4", Uuid::new_v4()));
-
-    let left_scaled_str = left_scaled.to_string_lossy().to_string();
-    let right_scaled_str = right_scaled.to_string_lossy().to_string();
-    let bg_blur_str = bg_blur.to_string_lossy().to_string();
-
     let half_width = output_width / 2;
-    let half_height = output_height / 2;
+    let _half_height = output_height / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
@@ -914,106 +906,42 @@ fn process_dual_mode_optimized(
     info!("双列模式: scale_percent={}, 缩放目标尺寸={}x{}, 裁剪目标尺寸={}x{}",
         scale_percent, target_scale_w, target_scale_h, half_width, crop_h);
 
-    let scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-{})/2:0,setsar=sar=1,fps=30,format=yuv420p",
-        target_scale_w, target_scale_h, half_width, crop_h, half_width
-    );
-
-    // 改进的背景模糊滤镜：使用单次强模糊效果
-    let bg_blur_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,gblur=sigma=50,setsar=sar=1,fps=30,format=yuv420p",
-        output_width, output_height, output_width, output_height
-    );
-
-    let start_str = start_offset.to_string();
-    let duration_str = duration.to_string();
-
-    let left_args: Vec<String> = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".to_string(), "error".to_string(),
-        "-ss".to_string(), start_str.clone(),
-        "-i".to_string(), input1_str.clone(),
-        "-t".to_string(), duration_str.clone(),
-        "-an".to_string(),
-        "-vf".to_string(), scale_filter.clone(),
-        "-c:v".to_string(), encoder.video_codec.to_string(),
-        "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-threads".to_string(), num_cpus_str.clone(),
-        "-y".to_string(),
-        left_scaled_str.clone(),
-    ];
-
-    let right_args: Vec<String> = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".to_string(), "error".to_string(),
-        "-ss".to_string(), start_str.clone(),
-        "-i".to_string(), input2_str,
-        "-t".to_string(), duration_str.clone(),
-        "-an".to_string(),
-        "-vf".to_string(), scale_filter,
-        "-c:v".to_string(), encoder.video_codec.to_string(),
-        "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-threads".to_string(), num_cpus_str.clone(),
-        "-y".to_string(),
-        right_scaled_str.clone(),
-    ];
-
-    // 背景虚化处理参数：使用第一个视频作为背景源并进行模糊处理
-    let bg_args: Vec<String> = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".to_string(), "error".to_string(),
-        "-ss".to_string(), start_str.clone(),
-        "-i".to_string(), input1_str,
-        "-t".to_string(), duration_str.clone(),
-        "-an".to_string(),
-        "-vf".to_string(), bg_blur_filter,
-        "-c:v".to_string(), encoder.video_codec.to_string(),
-        "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-threads".to_string(), num_cpus_str.clone(),
-        "-y".to_string(),
-        bg_blur_str.clone(),
-    ];
-
-    let task_id_l = task_id.to_string();
-    let cancel_l = cancel.clone();
-    let task_id_r = task_id.to_string();
-    let cancel_r = cancel.clone();
-    let task_id_bg = task_id.to_string();
-    let cancel_bg = cancel.clone();
-
-    let left_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_l, &cancel_l, &left_args));
-    let right_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_r, &cancel_r, &right_args));
-    let bg_handle = thread::spawn(move || run_ffmpeg_with_cancel(&task_id_bg, &cancel_bg, &bg_args));
-
-    let left_result = left_handle.join().map_err(|e| format!("线程 left 合并失败: {:?}", e))?;
-    let right_result = right_handle.join().map_err(|e| format!("线程 right 合并失败: {:?}", e))?;
-    let bg_result = bg_handle.join().map_err(|e| format!("线程 bg 合并失败: {:?}", e))?;
-
-    left_result.map_err(|e| format!("左视频处理失败: {}", e))?;
-    right_result.map_err(|e| format!("右视频处理失败: {}", e))?;
-    bg_result.map_err(|e| format!("背景虚化处理失败: {}", e))?;
-
-    if cancel.load(Ordering::SeqCst) {
-        return Err("已取消".to_string());
-    }
-
-    // 左右视频拼接后居中放置到模糊背景上
     let center_h = crop_h;
     let y_offset = (output_height as i32 - center_h as i32) / 2;
-    let merge_filter = format!(
-        "[1:v][2:v]hstack=inputs=2[center];\
-         [0:v][center]overlay=x=0:y={}:shortest=1[out]",
-        y_offset
+
+    // 合并为单次 ffmpeg 调用，避免 NVENC 中间文件空流导致 merge 阶段 "matches no streams"。
+    // 关键：filter 链最前置 setparams=range=tv 强制规范化色彩范围元数据，
+    // 防止上游素材 color_range 异常触发 NVENC reinit 失败。
+    // - 输入 0: input1（用于 left + bg 模糊背景）
+    // - 输入 1: input2（用于 right）
+    // 通过 split 共享 input1，避免重复解码。
+    let filter_complex = format!(
+        "[0:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,split=2[v0a][v0b];\
+         [1:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv[v1a];\
+         [v0a]scale={tw}:{th}:force_original_aspect_ratio=increase,crop={hw}:{ch}:(iw-{hw})/2:0,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[left];\
+         [v1a]scale={tw}:{th}:force_original_aspect_ratio=increase,crop={hw}:{ch}:(iw-{hw})/2:0,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[right];\
+         [v0b]scale={ow}:{oh}:force_original_aspect_ratio=decrease,pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:0x000000,gblur=sigma=50,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[bg];\
+         [left][right]hstack=inputs=2[center];\
+         [bg][center]overlay=x=0:y={yoff}:shortest=1[out]",
+        start = start_offset,
+        dur = duration,
+        tw = target_scale_w,
+        th = target_scale_h,
+        hw = half_width,
+        ch = crop_h,
+        ow = output_width,
+        oh = output_height,
+        yoff = y_offset,
     );
 
-    let merge_args: Vec<String> = vec![
+    let args: Vec<String> = vec![
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
-        "-i".to_string(), bg_blur_str,
-        "-i".to_string(), left_scaled_str,
-        "-i".to_string(), right_scaled_str,
-        "-filter_complex".to_string(), merge_filter,
+        "-i".to_string(), input1_str,
+        "-i".to_string(), input2_str,
+        "-filter_complex".to_string(), filter_complex,
         "-map".to_string(), "[out]".to_string(),
+        "-an".to_string(),
         "-c:v".to_string(), encoder.video_codec.to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-threads".to_string(), num_cpus_str,
@@ -1021,11 +949,7 @@ fn process_dual_mode_optimized(
         output_str,
     ];
 
-    run_ffmpeg_with_cancel(task_id, cancel, &merge_args)?;
-
-    let _ = fs::remove_file(&left_scaled);
-    let _ = fs::remove_file(&right_scaled);
-    let _ = fs::remove_file(&bg_blur);
+    run_ffmpeg_with_cancel(task_id, cancel, &args)?;
 
     Ok(())
 }
@@ -1039,28 +963,12 @@ fn process_quadrant_mode_optimized(
     output_height: u32,
     start_offset: f32,
     duration: f32,
-    temp_dir: &PathBuf,
+    _temp_dir: &PathBuf,
 ) -> Result<(), String> {
-    // S4：中间 mp4 放入任务级 temp_dir，由 TempDirGuard 统一回收
-    let tl_scaled = temp_dir.join(format!("tl_{}.mp4", Uuid::new_v4()));
-    let tr_scaled = temp_dir.join(format!("tr_{}.mp4", Uuid::new_v4()));
-    let bl_scaled = temp_dir.join(format!("bl_{}.mp4", Uuid::new_v4()));
-    let br_scaled = temp_dir.join(format!("br_{}.mp4", Uuid::new_v4()));
-
-    let tl_scaled_str = tl_scaled.to_string_lossy().to_string();
-    let tr_scaled_str = tr_scaled.to_string_lossy().to_string();
-    let bl_scaled_str = bl_scaled.to_string_lossy().to_string();
-    let br_scaled_str = br_scaled.to_string_lossy().to_string();
-
     let half_width = output_width / 2;
     let half_height = output_height / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
-
-    let cell_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p",
-        half_width, half_height, half_width, half_height
-    );
 
     let inputs = [
         videos[0].to_string_lossy().to_string(),
@@ -1068,50 +976,38 @@ fn process_quadrant_mode_optimized(
         videos[2].to_string_lossy().to_string(),
         videos[3].to_string_lossy().to_string(),
     ];
-    let outputs = [tl_scaled_str.clone(), tr_scaled_str.clone(), bl_scaled_str.clone(), br_scaled_str.clone()];
-    let labels = ["top-left", "top-right", "bottom-left", "bottom-right"];
-
-    let start_str = start_offset.to_string();
-    let duration_str = duration.to_string();
-
-    let mut handles = Vec::new();
-    for i in 0..4 {
-        let args: Vec<String> = vec![
-            "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
-            "-ss".to_string(), start_str.clone(),
-            "-i".to_string(), inputs[i].clone(),
-            "-t".to_string(), duration_str.clone(),
-            "-an".to_string(),
-            "-vf".to_string(), cell_filter.clone(),
-            "-c:v".to_string(), encoder.video_codec.to_string(),
-            "-pix_fmt".to_string(), "yuv420p".to_string(),
-            "-threads".to_string(), num_cpus_str.clone(),
-            "-y".to_string(), outputs[i].clone(),
-        ];
-        let task_id_c = task_id.to_string();
-        let cancel_c = cancel.clone();
-        let label = labels[i].to_string();
-        handles.push(thread::spawn(move || (label, run_ffmpeg_with_cancel(&task_id_c, &cancel_c, &args))));
-    }
-
-    for h in handles {
-        let (label, res) = h.join().map_err(|e| format!("线程 {:?} 崩溃", e))?;
-        res.map_err(|e| format!("{} 视频处理失败: {}", label, e))?;
-    }
-
-    if cancel.load(Ordering::SeqCst) {
-        return Err("已取消".to_string());
-    }
-
     let output_str = output.to_string_lossy().to_string();
-    let merge_filter = "[0:v][1:v]hstack[top];[2:v][3:v]hstack[bottom];[top][bottom]vstack=inputs=2[out]".to_string();
 
-    let merge_args: Vec<String> = vec![
+    // 合并为单次 ffmpeg 调用，避免 NVENC 中间文件空流导致 merge 阶段 "matches no streams"。
+    // 关键：filter 链最前置 setparams=range=tv 强制规范化色彩范围元数据，
+    // 防止上游素材 color_range 异常触发 NVENC reinit 失败。
+    let mut cell_chains: Vec<String> = Vec::with_capacity(4);
+    for i in 0..4 {
+        cell_chains.push(format!(
+            "[{i}:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,scale={hw}:{hh}:force_original_aspect_ratio=decrease,pad={hw}:{hh}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[c{i}]",
+            i = i,
+            start = start_offset,
+            dur = duration,
+            hw = half_width,
+            hh = half_height,
+        ));
+    }
+
+    let filter_complex = format!(
+        "{};[c0][c1]hstack=inputs=2[top];[c2][c3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[out]",
+        cell_chains.join(";")
+    );
+
+    let _ = output_width; // 仅用于满足参数语义（最终输出宽度 = half_width * 2）
+    let args: Vec<String> = vec![
         "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
-        "-i".to_string(), tl_scaled_str, "-i".to_string(), tr_scaled_str,
-        "-i".to_string(), bl_scaled_str, "-i".to_string(), br_scaled_str,
-        "-filter_complex".to_string(), merge_filter,
+        "-i".to_string(), inputs[0].clone(),
+        "-i".to_string(), inputs[1].clone(),
+        "-i".to_string(), inputs[2].clone(),
+        "-i".to_string(), inputs[3].clone(),
+        "-filter_complex".to_string(), filter_complex,
         "-map".to_string(), "[out]".to_string(),
+        "-an".to_string(),
         "-c:v".to_string(), encoder.video_codec.to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
         "-threads".to_string(), num_cpus_str,
@@ -1119,12 +1015,7 @@ fn process_quadrant_mode_optimized(
         output_str,
     ];
 
-    run_ffmpeg_with_cancel(task_id, cancel, &merge_args)?;
-
-    let _ = fs::remove_file(&tl_scaled);
-    let _ = fs::remove_file(&tr_scaled);
-    let _ = fs::remove_file(&bl_scaled);
-    let _ = fs::remove_file(&br_scaled);
+    run_ffmpeg_with_cancel(task_id, cancel, &args)?;
 
     Ok(())
 }
@@ -1443,7 +1334,7 @@ fn build_chained_xfade_filter_complex(
 
     for i in 0..segment_count {
         filter_parts.push(format!(
-            "[{}:v]settb=AVTB,setpts=PTS-STARTPTS,scale={}:{},setsar=sar=1,fps=30,format=yuv420p[v{}]",
+            "[{}:v]settb=AVTB,setpts=PTS-STARTPTS,scale={}:{},setsar=sar=1,fps=30,format=yuv420p,setrange=tv[v{}]",
             i, output_width, output_height, i
         ));
     }
@@ -1654,9 +1545,9 @@ fn process_single_mode(
 
     let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
 
-    // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容
+    // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容（规范化色彩范围）
     let tutorial_scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p",
+        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,setrange=tv",
         output_width, output_height, output_width, output_height
     );
 
@@ -1756,7 +1647,7 @@ fn process_single_mode(
         // 构建 concat 滤镜：先缩放每个输入视频，然后拼接
         let mut filter_parts: Vec<String> = Vec::new();
         for i in 0..segment_files.len() {
-            filter_parts.push(format!("[{}:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2[v{}]",
+            filter_parts.push(format!("[{}:v]scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[v{}]",
                 i, output_width, output_height, output_width, output_height, i));
         }
         let scaled_streams: String = (0..segment_files.len()).map(|i| format!("[v{}]", i)).collect::<Vec<_>>().join("");
@@ -1793,17 +1684,19 @@ fn process_single_mode(
         if enable_transition {
             push_step(tasks, task_id, &concat_step_id, &format!("视频{} - 拼接教程片段（带转场）", video_index), StepStatus::Running, None);
 
-            // 获取教程片段时长
+            // 模板视频实际时长（temp_output_path 已经是链式 xfade 后的产物）
+            let template_total_duration = probe_video_duration(&temp_output_path.to_string_lossy())?;
+            info!("模板视频时长: {:.2}秒", template_total_duration);
+
+            // 教程片段时长
             let tutorial_duration = probe_video_duration(&tutorial_scaled.to_string_lossy())?;
             info!("教程片段时长: {:.2}秒", tutorial_duration);
+            let _ = tutorial_duration; // 仅用于日志
 
-            // 计算总时长（模板片段总时长 - 转场时间）
-            let template_total_duration = segment_durations.iter().fold(0.0, |acc, &d| acc + d)
-                - (transition_duration * (segment_files.len() - 1) as f32);
-
-            // 添加模板和教程之间的转场类型
+            // 单次 xfade：模板尾部 transition_duration 秒与教程头部交叠
             let tutorial_transition = get_random_transition_type();
             info!("模板与教程转场类型: {}", tutorial_transition);
+            let xfade_offset = (template_total_duration - transition_duration).max(0.0);
 
             let encoder = detect_best_encoder();
             let num_cpus_str = num_cpus::get().to_string();
@@ -1815,10 +1708,8 @@ fn process_single_mode(
                 "-i".to_string(), tutorial_scaled.to_string_lossy().to_string(),
                 "-filter_complex".to_string(),
                 format!(
-                    "[0:v]xfade=transition={}:duration={}:offset={}[v0];\
-                     [v0][1:v]xfade=transition={}:duration={}:offset={}[final_video]",
-                    tutorial_transition, transition_duration, (template_total_duration - transition_duration),
-                    tutorial_transition, transition_duration, (template_total_duration - transition_duration)
+                    "[0:v][1:v]xfade=transition={}:duration={}:offset={}[final_video]",
+                    tutorial_transition, transition_duration, xfade_offset
                 ),
                 "-map".to_string(), "[final_video]".to_string(),
                 "-c:v".to_string(), encoder.video_codec.to_string(),
@@ -1873,37 +1764,47 @@ fn process_single_mode(
     }
 
     // 检查视频时长是否小于音频时长，如果小于则补齐
-    if !audio_path.is_empty() && audio_duration > 0.0 {
-        let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
-        info!("当前视频时长: {:.2}秒, 音频时长: {:.2}秒", video_duration, audio_duration);
+    // 关键：以 ffprobe 实际探测的音频时长为准，避免外部传入的 audio_duration
+    // 与真实音频文件不一致导致补素材逻辑与下游 -shortest 口径错位。
+    if !audio_path.is_empty() {
+        let actual_audio_duration = probe_video_duration(audio_path)
+            .unwrap_or_else(|e| {
+                info!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e);
+                audio_duration
+            });
+        if actual_audio_duration > 0.0 {
+            let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
+            info!("当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
+                video_duration, actual_audio_duration, audio_duration);
 
-        if video_duration < audio_duration {
-            let duration_needed = audio_duration - video_duration;
-            info!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed);
+            if video_duration < actual_audio_duration {
+                let duration_needed = actual_audio_duration - video_duration;
+                info!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed);
 
-            let supplement_step_id = format!("video_{}__supplement", video_index);
-            push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
+                let supplement_step_id = format!("video_{}__supplement", video_index);
+                push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
 
-            let temp_supplemented_path = video_temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
+                let temp_supplemented_path = video_temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
 
-            match supplement_video_with_random_clips(
-                task_id,
-                cancel,
-                &temp_with_tutorial_path,
-                &temp_supplemented_path,
-                duration_needed,
-                root_folder,
-                output_width,
-                output_height,
-            ) {
-                Ok(()) => {
-                    push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Completed, None);
-                    fs::copy(&temp_supplemented_path, &temp_with_tutorial_path)
-                        .map_err(|e| format!("复制补充后的视频失败: {}", e))?;
-                }
-                Err(e) => {
-                    push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Error, Some(e.clone()));
-                    return Err(e);
+                match supplement_video_with_random_clips(
+                    task_id,
+                    cancel,
+                    &temp_with_tutorial_path,
+                    &temp_supplemented_path,
+                    duration_needed,
+                    root_folder,
+                    output_width,
+                    output_height,
+                ) {
+                    Ok(()) => {
+                        push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Completed, None);
+                        fs::copy(&temp_supplemented_path, &temp_with_tutorial_path)
+                            .map_err(|e| format!("复制补充后的视频失败: {}", e))?;
+                    }
+                    Err(e) => {
+                        push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Error, Some(e.clone()));
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -1919,6 +1820,9 @@ fn process_single_mode(
         // 使用不同的临时文件作为输出，避免输入输出相同
         let temp_with_audio_path = video_temp_dir.join("temp_with_audio.mp4");
 
+        // 关键：使用 -shortest 让输出时长对齐到最短流（音频），
+        // 解决"视频总时长 > 音频时长"时尾部静音、最终时长被视频拉长的 BUG。
+        // 视频流改为 copy，避免对已编码视频做无意义的二次编码（仅音频需要重新编码）。
         let args: Vec<String> = vec![
             "-hide_banner".to_string(),
             "-loglevel".to_string(), "error".to_string(),
@@ -1928,9 +1832,9 @@ fn process_single_mode(
             "[1:a]volume=0.8[a]".to_string(),
             "-map".to_string(), "0:v".to_string(),
             "-map".to_string(), "[a]".to_string(),
-            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:v".to_string(), "copy".to_string(),
             "-c:a".to_string(), encoder.audio_codec.to_string(),
-            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-shortest".to_string(),
             "-movflags".to_string(), "+faststart".to_string(),
             "-threads".to_string(), num_cpus_str,
             "-y".to_string(),
@@ -2736,8 +2640,8 @@ mod tests {
             1920,
         );
 
-        assert!(filter.contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1080:1920,setsar=sar=1,fps=30,format=yuv420p[v0]"));
-        assert!(filter.contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1080:1920,setsar=sar=1,fps=30,format=yuv420p[v1]"));
+        assert!(filter.contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1080:1920,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[v0]"));
+        assert!(filter.contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1080:1920,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[v1]"));
         assert!(filter.contains("[v0][v1]xfade=transition=fade:duration=0.5:offset=4.5[v1_out]"));
         assert!(filter.contains("[v1_out]format=yuv420p[final_video]"));
         assert!(!filter.contains("[v0_out][1:v]xfade"));
