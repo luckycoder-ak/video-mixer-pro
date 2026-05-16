@@ -66,6 +66,12 @@ use chrono::{DateTime, Utc};
 use crate::AppState;
 use crate::config;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+const WINDOWS_CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
@@ -176,6 +182,51 @@ impl Task {
             logs: Vec::new(),
         }
     }
+}
+
+/**
+ 返回 Windows 隐藏控制台窗口所需的 creation flags。
+
+ 参数:
+ - 无。
+
+ 返回:
+ - Windows 平台返回 `CREATE_NO_WINDOW` 对应的标志位；
+ - 非 Windows 平台返回 `0`。
+
+ 异常:
+ - 本函数不抛出异常。
+ */
+#[cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
+fn hidden_process_creation_flags() -> u32 {
+    #[cfg(target_os = "windows")]
+    {
+        WINDOWS_CREATE_NO_WINDOW
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        0
+    }
+}
+
+/**
+ 为外部子进程应用“隐藏控制台窗口”的启动参数。
+
+ 参数:
+ - `command`: 待启动的子进程命令对象。
+
+ 返回:
+ - `&mut Command`: 返回原命令对象，便于链式继续设置参数。
+
+ 异常:
+ - 本函数不抛出异常；非 Windows 平台为无副作用空操作。
+ */
+pub fn apply_hidden_process_startup(command: &mut Command) -> &mut Command {
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(hidden_process_creation_flags());
+    }
+    command
 }
 
 /**
@@ -735,9 +786,9 @@ fn detect_best_encoder() -> EncoderConfig {
     static ENCODER: OnceLock<EncoderConfig> = OnceLock::new();
 
     ENCODER.get_or_init(|| {
-        let output = Command::new("ffmpeg")
-            .args(["-hide_banner", "-encoders"])
-            .output();
+        let mut command = Command::new("ffmpeg");
+        apply_hidden_process_startup(&mut command);
+        let output = command.args(["-hide_banner", "-encoders"]).output();
 
         match output {
             Ok(out) => {
@@ -918,51 +969,39 @@ fn process_single_mode_segment(
     Ok(())
 }
 
-/// 从素材库随机选择片段补充视频时长
-fn supplement_video_with_random_clips(
+/**
+ 根据模板第一个片段选中的首个素材，从其尾部截取片段补充视频时长。
+
+ 参数:
+ - `task_id`: 当前任务 ID
+ - `cancel`: 取消标记
+ - `input_video`: 当前待补充的视频文件
+ - `output_video`: 补充完成后的输出文件
+ - `duration_needed`: 需要补充的时长，单位秒
+ - `supplement_source_video`: 用于补充的源视频，取自模板第一个片段选中的首个素材
+ - `output_width`: 输出视频宽度
+ - `output_height`: 输出视频高度
+
+ 返回:
+ - `Ok(())`: 补充成功
+ - `Err(String)`: 截取、拼接或探测视频失败
+
+ 异常:
+ - 当补充源视频不可用或 ffmpeg 执行失败时返回错误字符串。
+ */
+fn supplement_video_with_first_segment_tail(
     task_id: &str,
     cancel: &Arc<AtomicBool>,
     input_video: &PathBuf,
     output_video: &PathBuf,
     duration_needed: f32,
-    root_folder: &str,
+    supplement_source_video: &PathBuf,
     output_width: u32,
     output_height: u32,
 ) -> Result<(), String> {
-    // 获取素材库中的所有视频文件
-    let videos = get_video_files(root_folder)?;
-    if videos.is_empty() {
-        return Err("素材库中没有可用的视频文件".to_string());
-    }
-
-    // 过滤掉输入视频本身
-    let available_videos: Vec<_> = videos
-        .into_iter()
-        .filter(|v| v != input_video)
-        .collect();
-
-    if available_videos.is_empty() {
-        return Err("素材库中没有其他可用的视频文件".to_string());
-    }
-
-    // 随机选择一个视频
-    let mut rng = rand::thread_rng();
-    let random_index = rng.gen_range(0..available_videos.len());
-    let selected_video = &available_videos[random_index];
-
-    // 探测选中视频的时长
-    let clip_duration = probe_video_duration(&selected_video.to_string_lossy())?;
-    
-    // 使用的片段时长（不超过视频本身时长和需要的时长）
-    let use_duration = duration_needed.min(clip_duration);
-    
-    // 随机选择起始位置（确保有足够长度）
-    let max_start = (clip_duration - use_duration).max(0.0);
-    let start_offset = if max_start > 0.0 {
-        rng.gen_range(0.0..max_start)
-    } else {
-        0.0
-    };
+    let clip_duration = probe_video_duration(&supplement_source_video.to_string_lossy())?;
+    let (start_offset, use_duration) =
+        calculate_tail_supplement_window(clip_duration, duration_needed);
 
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
@@ -977,7 +1016,7 @@ fn supplement_video_with_random_clips(
         "-hide_banner".to_string(),
         "-loglevel".to_string(), "error".to_string(),
         "-i".to_string(), input_video.to_string_lossy().to_string(),
-        "-i".to_string(), selected_video.to_string_lossy().to_string(),
+        "-i".to_string(), supplement_source_video.to_string_lossy().to_string(),
         "-filter_complex".to_string(), filter_complex,
         "-c:v".to_string(), encoder.video_codec.to_string(),
         "-pix_fmt".to_string(), "yuv420p".to_string(),
@@ -988,6 +1027,27 @@ fn supplement_video_with_random_clips(
     ];
 
     run_ffmpeg_with_cancel(task_id, cancel, &args)
+}
+
+/**
+ 计算用于补尾的尾部截取窗口。
+
+ 参数:
+ - `clip_duration`: 源视频总时长，单位秒
+ - `duration_needed`: 需要补充的时长，单位秒
+
+ 返回:
+ - `(start_offset, use_duration)`: 从源视频尾部开始截取的起始偏移和实际使用时长
+
+ 异常:
+ - 本函数不抛出异常；当输入为非正值时自动回退到 0。
+ */
+fn calculate_tail_supplement_window(clip_duration: f32, duration_needed: f32) -> (f32, f32) {
+    let safe_clip_duration = clip_duration.max(0.0);
+    let safe_duration_needed = duration_needed.max(0.0);
+    let use_duration = safe_duration_needed.min(safe_clip_duration);
+    let start_offset = (safe_clip_duration - use_duration).max(0.0);
+    (start_offset, use_duration)
 }
 
 fn process_dual_mode_optimized(
@@ -1163,7 +1223,9 @@ pub fn run_ffmpeg_with_cancel(
     }
 
     let ffmpeg_path = find_ffmpeg_executable();
-    let child = Command::new(&ffmpeg_path)
+    let mut command = Command::new(&ffmpeg_path);
+    apply_hidden_process_startup(&mut command);
+    let child = command
         .args(args.iter().map(|s| s.as_str()).collect::<Vec<&str>>())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1225,7 +1287,9 @@ pub fn run_ffmpeg_with_cancel(
 #[allow(dead_code)]
 pub fn run_ffmpeg_fast(args: &[&str]) -> Result<(), String> {
     let ffmpeg_path = find_ffmpeg_executable();
-    let output = Command::new(&ffmpeg_path)
+    let mut command = Command::new(&ffmpeg_path);
+    apply_hidden_process_startup(&mut command);
+    let output = command
         .args(args)
         .output()
         .map_err(|e| format!("执行 FFmpeg 失败: {}", e))?;
@@ -1263,7 +1327,9 @@ impl ExitStatusExt for std::process::ExitStatus {
 }
 
 pub fn probe_video_duration(video_path: &str) -> Result<f32, String> {
-    let output = Command::new("ffprobe")
+    let mut command = Command::new("ffprobe");
+    apply_hidden_process_startup(&mut command);
+    let output = command
         .args([
             "-v", "error",
             "-show_entries", "format=duration",
@@ -1535,7 +1601,7 @@ fn process_single_mode(
     tutorial_used_by_config: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     config_id: &str,
     _app_data_file: &Arc<RwLock<Option<PathBuf>>>,
-    root_folder: &str,
+    _root_folder: &str,
     enable_transition: bool,
     transition_duration: f32,
     // 任务级别共享的临时目录
@@ -1547,6 +1613,7 @@ fn process_single_mode(
     fs::create_dir_all(&video_temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
+    let mut first_segment_primary_video: Option<PathBuf> = None;
 
     let time_points: Vec<f32> = template_segments.iter().map(|s| s.duration).collect();
     let mut segment_offsets = compute_segment_offsets(&time_points);
@@ -1606,6 +1673,9 @@ fn process_single_mode(
         let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
         let selected = select_random_videos(&videos, video_count, folder_used)
             .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
+        if i == 0 {
+            first_segment_primary_video = selected.first().cloned();
+        }
         let source_folder_abs = std::fs::canonicalize(&segment.source_folder)
             .unwrap_or_else(|_| PathBuf::from(&segment.source_folder))
             .to_string_lossy()
@@ -1990,14 +2060,31 @@ fn process_single_mode(
                 push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
 
                 let temp_supplemented_path = video_temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
+                let supplement_source_video = first_segment_primary_video
+                    .as_ref()
+                    .ok_or_else(|| "模板第一个片段未选中可用于补尾的素材".to_string())?;
+                push_log(
+                    tasks,
+                    task_id,
+                    LogLevel::Info,
+                    video_index,
+                    format!(
+                        "使用模板第一个片段素材 {} 的尾部补充 {:.2} 秒",
+                        supplement_source_video
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or_default(),
+                        duration_needed
+                    ),
+                );
 
-                match supplement_video_with_random_clips(
+                match supplement_video_with_first_segment_tail(
                     task_id,
                     cancel,
                     &temp_with_tutorial_path,
                     &temp_supplemented_path,
                     duration_needed,
-                    root_folder,
+                    supplement_source_video,
                     output_width,
                     output_height,
                 ) {
@@ -2842,9 +2929,10 @@ pub fn open_folder(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chained_xfade_filter_complex, compute_segment_offsets, duration_cache,
-        filter_videos_by_min_duration, get_random_transition_type, resolve_task_output_dir,
-        sanitize_task_name, DurationCacheEntry,
+        build_chained_xfade_filter_complex, calculate_tail_supplement_window,
+        compute_segment_offsets, duration_cache, filter_videos_by_min_duration,
+        get_random_transition_type, hidden_process_creation_flags,
+        resolve_task_output_dir, sanitize_task_name, DurationCacheEntry,
     };
     use std::collections::HashSet;
     use std::path::PathBuf;
@@ -3008,5 +3096,33 @@ mod tests {
         let mut guard = duration_cache().write().unwrap();
         guard.remove(&long_path.to_string_lossy().to_string());
         guard.remove(&short_path.to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn calculate_tail_supplement_window_should_use_video_tail_when_duration_is_enough() {
+        let (start_offset, use_duration) = calculate_tail_supplement_window(10.0, 2.0);
+
+        assert_eq!(start_offset, 8.0);
+        assert_eq!(use_duration, 2.0);
+    }
+
+    #[test]
+    fn calculate_tail_supplement_window_should_fallback_to_full_video_when_duration_is_short() {
+        let (start_offset, use_duration) = calculate_tail_supplement_window(1.5, 2.0);
+
+        assert_eq!(start_offset, 0.0);
+        assert_eq!(use_duration, 1.5);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn hidden_process_creation_flags_should_use_create_no_window_on_windows() {
+        assert_eq!(hidden_process_creation_flags(), WINDOWS_CREATE_NO_WINDOW);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn hidden_process_creation_flags_should_be_zero_on_non_windows() {
+        assert_eq!(hidden_process_creation_flags(), 0);
     }
 }

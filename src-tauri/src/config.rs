@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::AppState;
 use log::info;
+use crate::video_processor::apply_hidden_process_startup;
 
 fn default_transition_duration() -> f32 {
     0.2
@@ -209,7 +210,9 @@ pub fn delete_config(state: tauri::State<AppState>, id: String) -> Result<(), St
 
 #[tauri::command]
 pub fn get_audio_duration(audio_path: String) -> Result<f32, String> {
-    let output = std::process::Command::new("ffprobe")
+    let mut command = std::process::Command::new("ffprobe");
+    apply_hidden_process_startup(&mut command);
+    let output = command
         .args([
             "-v", "error",
             "-show_entries", "format=duration",
