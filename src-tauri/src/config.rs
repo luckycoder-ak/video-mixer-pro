@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::AppState;
@@ -227,51 +226,4 @@ pub fn get_audio_duration(audio_path: String) -> Result<f32, String> {
     let duration_str = String::from_utf8_lossy(&output.stdout);
     let duration_secs: f64 = duration_str.trim().parse().map_err(|_| "解析时长失败".to_string())?;
     Ok(duration_secs as f32)
-}
-
-#[tauri::command]
-pub fn import_config(state: tauri::State<AppState>, config: VideoConfig) -> Result<VideoConfig, String> {
-    info!("import_config called with config name: {}", config.name);
-
-    let mut new_config = config.clone();
-    new_config.id = Uuid::new_v4().to_string();
-    new_config.created_at = Utc::now();
-    new_config.updated_at = Utc::now();
-
-    let mut configs = state.configs.write().map_err(|e| e.to_string())?;
-
-    if configs.iter().any(|c| c.name == new_config.name) {
-        return Err(format!("配置名称 '{}' 已存在", new_config.name));
-    }
-
-    if !new_config.root_folder.is_empty() {
-        if let Err(e) = fs::create_dir_all(&new_config.root_folder) {
-            info!("创建主目录失败: {}", e);
-        }
-    }
-
-    if !new_config.output_folder.is_empty() {
-        if let Err(e) = fs::create_dir_all(&new_config.output_folder) {
-            info!("创建输出目录失败: {}", e);
-        }
-    }
-
-    if !new_config.tutorial_folder.is_empty() {
-        if let Err(e) = fs::create_dir_all(&new_config.tutorial_folder) {
-            info!("创建教程目录失败: {}", e);
-        }
-    }
-
-    for segment in &new_config.template_segments {
-        if !segment.source_folder.is_empty() {
-            if let Err(e) = fs::create_dir_all(&segment.source_folder) {
-                info!("创建片段目录 {} 失败: {}", segment.source_folder, e);
-            }
-        }
-    }
-
-    configs.push(new_config.clone());
-    info!("配置导入成功: {}", new_config.name);
-
-    Ok(new_config)
 }

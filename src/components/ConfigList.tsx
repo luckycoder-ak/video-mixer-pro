@@ -1,7 +1,5 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { open, save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { VideoConfig } from '../types';
 
 interface Props {
@@ -18,61 +16,6 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
       await invoke('open_folder', { path: folderPath });
     } catch (error) {
       console.error('打开文件夹失败:', error);
-    }
-  };
-
-  const handleExportConfig = async (config: VideoConfig) => {
-    try {
-      const path = await save({
-        defaultPath: `${config.name}.json`,
-        filters: [{ name: '配置文件', extensions: ['json'] }],
-      });
-      if (path) {
-        const configData = JSON.stringify(config, null, 2);
-        await writeTextFile(path, configData);
-        alert(`配置已导出到:\n${path}`);
-      }
-    } catch (error) {
-      console.error('导出配置失败:', error);
-      alert('导出配置失败');
-    }
-  };
-
-  const handleImportConfig = async () => {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: '配置文件', extensions: ['json'] }],
-      });
-      if (selected) {
-        const content = await readTextFile(selected as string);
-        const config: VideoConfig = JSON.parse(content);
-
-        await invoke('import_config', { config });
-
-        onRefresh();
-        alert('配置导入成功！相关文件夹已自动创建');
-      }
-    } catch (error) {
-      console.error('导入配置失败:', error);
-      alert('导入配置失败，请检查配置文件格式');
-    }
-  };
-
-  const handleExportAllConfigs = async () => {
-    try {
-      const path = await save({
-        defaultPath: 'video-mixer-configs.json',
-        filters: [{ name: '配置文件', extensions: ['json'] }],
-      });
-      if (path) {
-        const data = JSON.stringify(configs, null, 2);
-        await writeTextFile(path, data);
-        alert(`所有配置已导出到:\n${path}`);
-      }
-    } catch (error) {
-      console.error('导出所有配置失败:', error);
-      alert('导出失败');
     }
   };
 
@@ -98,20 +41,6 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
           <span>配置列表</span>
         </h2>
         <div className="flex gap-2">
-          <button
-            onClick={handleImportConfig}
-            className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors flex items-center gap-2"
-          >
-            <span>📥</span>
-            <span>配置导入</span>
-          </button>
-          <button
-            onClick={handleExportAllConfigs}
-            className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors flex items-center gap-2"
-          >
-            <span>📤</span>
-            <span>配置导出</span>
-          </button>
           <button
             onClick={onNew}
             className="px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-lg font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2"
@@ -161,21 +90,13 @@ export const ConfigList: React.FC<Props> = ({ configs, onNew, onEdit, onGenerate
               </div>
               <div className="col-span-2 text-gray-600 flex items-center gap-1">
                 <span>⏱️</span>
-                <span>{config.template_segments.reduce((sum, seg) => sum + seg.duration, 0) - (config.segment_count - 1) * 0.2} 秒</span>
+                <span>{(config.template_segments.reduce((sum, seg) => sum + seg.duration, 0) - (config.segment_count - 1) * 0.2).toFixed(2)} 秒</span>
               </div>
               <div className="col-span-2 text-gray-600 flex items-center gap-1">
                 <span>🎵</span>
                 <span>{config.audio_duration} 秒</span>
               </div>
               <div className="col-span-3 flex gap-2">
-                <button
-                  onClick={() => handleExportConfig(config)}
-                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-1"
-                  title="导出配置"
-                >
-                  <span>📤</span>
-                  <span>导出</span>
-                </button>
                 <button
                   onClick={() => onEdit(config)}
                   className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"

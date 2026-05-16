@@ -98,6 +98,32 @@ pub struct TaskStep {
     pub name: String,
     pub status: StepStatus,
     pub error: Option<String>,
+    /// 步骤进入 Running 状态的时刻
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    /// 步骤进入 Completed/Error 状态的时刻
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+/// 日志级别
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+}
+
+/// 任务结构化日志条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub timestamp: DateTime<Utc>,
+    pub level: LogLevel,
+    /// 关联的视频序号（0 表示任务级别，非视频级别）
+    #[serde(default)]
+    pub video_index: usize,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +146,8 @@ pub struct Task {
     pub error_message: Option<String>,
     pub current_video: usize,
     pub progress_steps: Vec<TaskStep>,
+    #[serde(default)]
+    pub logs: Vec<LogEntry>,
 }
 
 impl Task {
@@ -145,6 +173,7 @@ impl Task {
             error_message: None,
             current_video: 0,
             progress_steps: Vec::new(),
+            logs: Vec::new(),
         }
     }
 }
@@ -366,49 +395,121 @@ fn push_step(
 ) {
     if let Ok(mut tasks) = tasks.write() {
         if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
+            let now = Utc::now();
+            let should_emit_step_log = matches!(status, StepStatus::Error) || step_id == "finish";
+            let mut should_log = false;
+            let mut log_message = String::new();
             if let Some(step) = t.progress_steps.iter_mut().find(|s| s.id == step_id) {
-                step.status = status;
-                step.error = error;
+                let changed = step.status != status || step.error != error || step.name != name;
+                step.name = name.to_string();
+                step.status = status.clone();
+                step.error = error.clone();
+                if status == StepStatus::Running && step.started_at.is_none() {
+                    step.started_at = Some(now);
+                }
+                if matches!(status, StepStatus::Completed | StepStatus::Error) {
+                    if step.started_at.is_none() {
+                        step.started_at = Some(now);
+                    }
+                    step.completed_at = Some(now);
+                }
+                if changed && should_emit_step_log {
+                    should_log = true;
+                    log_message = build_step_log_message(name, &status, error.as_deref());
+                }
             } else {
                 t.progress_steps.push(TaskStep {
                     id: step_id.to_string(),
                     name: name.to_string(),
-                    status,
-                    error,
+                    status: status.clone(),
+                    error: error.clone(),
+                    started_at: if status == StepStatus::Running || matches!(status, StepStatus::Completed | StepStatus::Error) {
+                        Some(now)
+                    } else {
+                        None
+                    },
+                    completed_at: if matches!(status, StepStatus::Completed | StepStatus::Error) {
+                        Some(now)
+                    } else {
+                        None
+                    },
                 });
+                if should_emit_step_log {
+                    should_log = true;
+                    log_message = build_step_log_message(name, &status, error.as_deref());
+                }
+            }
+            if should_log {
+                append_task_log_entry(
+                    t,
+                    LogEntry {
+                        timestamp: now,
+                        level: match status {
+                            StepStatus::Error => LogLevel::Error,
+                            _ => LogLevel::Info,
+                        },
+                        video_index: extract_video_index(step_id),
+                        message: log_message,
+                    },
+                );
             }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-struct StepUpdate {
-    step_id: String,
-    name: String,
-    status: StepStatus,
-    error: Option<String>,
+const TASK_LOG_LIMIT: usize = 500;
+
+fn extract_video_index(step_id: &str) -> usize {
+    step_id
+        .split('_')
+        .nth(1)
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(0)
 }
 
-fn batch_update_steps(
+fn build_step_log_message(name: &str, status: &StepStatus, error: Option<&str>) -> String {
+    match status {
+        StepStatus::Pending => format!("步骤等待: {}", name),
+        StepStatus::Running => format!("开始执行: {}", name),
+        StepStatus::Completed => format!("执行完成: {}", name),
+        StepStatus::Error => match error {
+            Some(err) if !err.is_empty() => format!("执行失败: {} - {}", name, err),
+            _ => format!("执行失败: {}", name),
+        },
+    }
+}
+
+fn append_task_log_entry(task: &mut Task, entry: LogEntry) {
+    if let Some(last) = task.logs.last() {
+        if last.level == entry.level && last.video_index == entry.video_index && last.message == entry.message {
+            return;
+        }
+    }
+    task.logs.push(entry);
+    if task.logs.len() > TASK_LOG_LIMIT {
+        let drain_count = task.logs.len().saturating_sub(TASK_LOG_LIMIT);
+        task.logs.drain(0..drain_count);
+    }
+}
+
+fn push_log(
     tasks: &Arc<RwLock<Vec<Task>>>,
     task_id: &str,
-    updates: Vec<StepUpdate>,
+    level: LogLevel,
+    video_index: usize,
+    message: impl Into<String>,
 ) {
-    if let Ok(mut guard) = tasks.write() {
-        if let Some(task) = guard.iter_mut().find(|t| t.id == task_id) {
-            for update in updates {
-                if let Some(step) = task.progress_steps.iter_mut().find(|s| s.id == update.step_id) {
-                    step.status = update.status;
-                    step.error = update.error;
-                } else {
-                    task.progress_steps.push(TaskStep {
-                        id: update.step_id,
-                        name: update.name,
-                        status: update.status,
-                        error: update.error,
-                    });
-                }
-            }
+    if let Ok(mut tasks) = tasks.write() {
+        if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+            append_task_log_entry(
+                task,
+                LogEntry {
+                    timestamp: Utc::now(),
+                    level,
+                    video_index,
+                    message: message.into(),
+                },
+            );
         }
     }
 }
@@ -556,60 +657,11 @@ fn normalize_folder_key(folder: &str) -> String {
     }
 }
 
-/**
- 将教程已用素材集合写回 app_data.json。
- 仅更新 used_tutorial_videos 字段，其它字段保持文件原值。
- 失败返回 Err，不阻塞主流程（调用方决定是否仅 warn）。
- */
-fn persist_tutorial_used(
-    app_data_file: &Arc<RwLock<Option<PathBuf>>>,
-    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
-) -> Result<(), String> {
-    let path_opt = app_data_file
-        .read()
-        .map_err(|e| format!("读取 app_data_file 失败: {}", e))?
-        .clone();
-    let Some(path) = path_opt else {
-        return Err("app_data_file 尚未初始化".to_string());
-    };
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-    }
-
-    let snapshot: Vec<String> = tutorial_used_global
-        .read()
-        .map_err(|e| format!("读取教程已用集合失败: {}", e))?
-        .iter()
-        .cloned()
-        .collect();
-
-    let mut value: serde_json::Value = if path.exists() {
-        let content = fs::read_to_string(&path).map_err(|e| format!("读取 app_data.json 失败: {}", e))?;
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    if !value.is_object() {
-        value = serde_json::json!({});
-    }
-    if let Some(obj) = value.as_object_mut() {
-        obj.insert(
-            "used_tutorial_videos".to_string(),
-            serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Array(vec![])),
-        );
-    }
-
-    let content = serde_json::to_string_pretty(&value).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&path, content).map_err(|e| format!("写入 app_data.json 失败: {}", e))?;
-    Ok(())
-}
-
 fn save_tasks_to_disk(
     app_data_file: &Arc<RwLock<Option<PathBuf>>>,
     tasks: &Arc<RwLock<Vec<Task>>>,
     configs: &Arc<RwLock<Vec<crate::config::VideoConfig>>>,
-    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
+    tutorial_used_by_config: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
 ) -> Result<(), String> {
     let path_opt = app_data_file
         .read()
@@ -622,47 +674,43 @@ fn save_tasks_to_disk(
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 读取现有数据，保留使用记录
-    let (usage_records, existing_used_tutorial) = if path.exists() {
+    // 读取现有数据，保留 usage_records
+    let usage_records = if path.exists() {
         if let Ok(content) = fs::read_to_string(&path) {
             if let Ok(existing_data) = serde_json::from_str::<crate::storage::AppData>(&content) {
-                (existing_data.usage_records, existing_data.used_tutorial_videos)
+                existing_data.usage_records
             } else {
-                (std::collections::HashMap::new(), Vec::new())
+                std::collections::HashMap::new()
             }
         } else {
-            (std::collections::HashMap::new(), Vec::new())
+            std::collections::HashMap::new()
         }
     } else {
-        (std::collections::HashMap::new(), Vec::new())
-    };
-
-    // 与内存中最新的教程已用集合合并
-    let merged_used_tutorial: Vec<String> = {
-        let mut set: HashSet<String> = existing_used_tutorial.into_iter().collect();
-        if let Ok(in_memory) = tutorial_used_global.read() {
-            for v in in_memory.iter() {
-                set.insert(v.clone());
-            }
-        }
-        set.into_iter().collect()
+        std::collections::HashMap::new()
     };
 
     // 获取最新的任务和配置
     let current_tasks = tasks.read().map_err(|e| e.to_string())?.clone();
     let current_configs = configs.read().map_err(|e| e.to_string())?.clone();
-
-    let data = crate::storage::AppData {
-        configs: current_configs,
-        tasks: current_tasks,
+    let current_used_tutorial = tutorial_used_by_config
+        .read()
+        .map_err(|e| e.to_string())?
+        .clone();
+    let base_dir = path
+        .parent()
+        .ok_or_else(|| "无法解析 app_data.json 所在目录".to_string())?;
+    let (_, persisted_tasks) = crate::storage::persist_runtime_store_in_dir(
+        base_dir,
+        &current_configs,
+        &current_tasks,
+        &current_used_tutorial,
         usage_records,
-        used_tutorial_videos: merged_used_tutorial,
-    };
+    )?;
 
-    let content = serde_json::to_string_pretty(&data).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&path, content).map_err(|e| format!("写入 app_data.json 失败: {}", e))?;
-
-    info!("成功保存 {} 个任务到磁盘", data.tasks.len());
+    if let Ok(mut task_guard) = tasks.write() {
+        *task_guard = persisted_tasks.clone();
+    }
+    info!("成功保存 {} 个任务到磁盘", persisted_tasks.len());
     Ok(())
 }
 
@@ -1236,13 +1284,29 @@ pub fn probe_video_duration(video_path: &str) -> Result<f32, String> {
     }
 }
 
+/// 视频时长缓存条目。
+/// - `duration`: ffprobe 探测得到的时长（秒）
+/// - `file_mtime`: 缓存时记录的文件修改时间
+/// - `file_size`: 缓存时记录的文件大小
+/// - `cached_at`: 缓存写入时刻（用于兜底 TTL）
+#[derive(Debug, Clone)]
+struct DurationCacheEntry {
+    duration: f32,
+    file_mtime: Option<SystemTime>,
+    file_size: Option<u64>,
+    cached_at: Instant,
+}
+
 /**
  进程级视频时长缓存，避免同一素材重复 ffprobe。
  */
-fn duration_cache() -> &'static RwLock<HashMap<String, f32>> {
-    static CACHE: OnceLock<RwLock<HashMap<String, f32>>> = OnceLock::new();
+fn duration_cache() -> &'static RwLock<HashMap<String, DurationCacheEntry>> {
+    static CACHE: OnceLock<RwLock<HashMap<String, DurationCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(HashMap::new()))
 }
+
+/// 时长缓存兜底 TTL：文件系统元数据异常时，超过该时长强制重新 ffprobe
+const DURATION_CACHE_TTL: Duration = Duration::from_secs(5);
 
 /**
  带缓存的视频时长探测。
@@ -1253,14 +1317,30 @@ fn duration_cache() -> &'static RwLock<HashMap<String, f32>> {
  - 失败: 错误描述（ffprobe 异常或解析失败）。
  */
 pub fn probe_video_duration_cached(video_path: &str) -> Result<f32, String> {
+    let current_meta = fs::metadata(video_path).ok();
+    let current_mtime = current_meta.as_ref().and_then(|m| m.modified().ok());
+    let current_size = current_meta.as_ref().map(|m| m.len());
+
     if let Ok(guard) = duration_cache().read() {
-        if let Some(&d) = guard.get(video_path) {
-            return Ok(d);
+        if let Some(entry) = guard.get(video_path) {
+            let meta_match = entry.file_mtime == current_mtime && entry.file_size == current_size;
+            let ttl_ok = entry.cached_at.elapsed() < DURATION_CACHE_TTL;
+            if meta_match && ttl_ok {
+                return Ok(entry.duration);
+            }
         }
     }
     let d = probe_video_duration(video_path)?;
     if let Ok(mut guard) = duration_cache().write() {
-        guard.insert(video_path.to_string(), d);
+        guard.insert(
+            video_path.to_string(),
+            DurationCacheEntry {
+                duration: d,
+                file_mtime: current_mtime,
+                file_size: current_size,
+                cached_at: Instant::now(),
+            },
+        );
     }
     Ok(d)
 }
@@ -1451,9 +1531,10 @@ fn process_single_mode(
     output_filename: &str,
     // 每个 source_folder 独立的已用集合；仅保证单次任务内同文件夹不重复选中。
     used_per_folder: &mut HashMap<String, HashSet<String>>,
-    // 教程素材全局已用集合（持久化）；本视频内挑中的需要立即写入并持久化。
-    tutorial_used_global: &Arc<RwLock<HashSet<String>>>,
-    app_data_file: &Arc<RwLock<Option<PathBuf>>>,
+    // 教程素材按配置隔离的已用集合；本视频内挑中的需要立即写入内存，持久化留到任务保存时统一处理。
+    tutorial_used_by_config: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    config_id: &str,
+    _app_data_file: &Arc<RwLock<Option<PathBuf>>>,
     root_folder: &str,
     enable_transition: bool,
     transition_duration: f32,
@@ -1525,6 +1606,31 @@ fn process_single_mode(
         let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
         let selected = select_random_videos(&videos, video_count, folder_used)
             .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
+        let source_folder_abs = std::fs::canonicalize(&segment.source_folder)
+            .unwrap_or_else(|_| PathBuf::from(&segment.source_folder))
+            .to_string_lossy()
+            .to_string();
+        let selected_summary = selected
+            .iter()
+            .map(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+        push_log(
+            tasks,
+            task_id,
+            LogLevel::Info,
+            video_index,
+            format!(
+                "片段{} 从文件夹 {} 选中素材 {} 个，裁剪模式 {:?}，偏移 {:.2}s，时长 {:.2}s；文件名：{}",
+                i + 1,
+                source_folder_abs,
+                selected.len(),
+                segment.crop_mode,
+                segment_offsets[i],
+                segment_durations[i],
+                selected_summary
+            ),
+        );
         for s in &selected {
             folder_used.insert(s.to_string_lossy().to_string());
         }
@@ -1559,7 +1665,7 @@ fn process_single_mode(
         segment_files.push(trimmed_segment);
     }
 
-    // 教程片段：必须配置文件夹；全局去重，用过的素材永不再选；耗尽即报错。
+    // 教程片段：必须配置文件夹；按配置去重，用过的素材永不再选；耗尽即报错。
     if tutorial_folder.trim().is_empty() {
         let err = "教程素材文件夹未配置".to_string();
         let tutorial_step_id = format!("video_{}__tutorial", video_index);
@@ -1578,11 +1684,12 @@ fn process_single_mode(
     let tutorial_step_id = format!("video_{}__tutorial", video_index);
     push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
 
-    // 从全局已用集合里过滤出可用的教程素材
+    // 从当前配置的已用集合里过滤出可用的教程素材
     let tutorial_video = {
-        let used_snapshot: HashSet<String> = tutorial_used_global
+        let used_snapshot: HashSet<String> = tutorial_used_by_config
             .read()
-            .map(|g| g.clone())
+            .ok()
+            .and_then(|guard| guard.get(config_id).cloned())
             .unwrap_or_default();
         let available: Vec<PathBuf> = tutorial_videos
             .iter()
@@ -1591,7 +1698,7 @@ fn process_single_mode(
             .collect();
         if available.is_empty() {
             let err = format!(
-                "教程素材已全部使用过，请补充新素材到: {}（全局已用 {} 个）",
+                "教程素材已全部使用过，请补充新素材到: {}（配置已用 {} 个）",
                 tutorial_folder,
                 used_snapshot.len()
             );
@@ -1603,13 +1710,29 @@ fn process_single_mode(
         available[idx].clone()
     };
 
-    // 立即登记为已用（内存中），防止后续视频重复选取，持久化留到任务结束时统一处理
+    // 立即登记为已用（内存中），防止同配置后续视频重复选取，持久化留到任务保存时统一处理
     let tutorial_key = tutorial_video.to_string_lossy().to_string();
     {
-        if let Ok(mut guard) = tutorial_used_global.write() {
-            guard.insert(tutorial_key.clone());
+        if let Ok(mut guard) = tutorial_used_by_config.write() {
+            guard
+                .entry(config_id.to_string())
+                .or_insert_with(HashSet::new)
+                .insert(tutorial_key.clone());
         }
     }
+    push_log(
+        tasks,
+        task_id,
+        LogLevel::Info,
+        video_index,
+        format!(
+            "教程片段从文件夹 {} 选中素材文件名：{}",
+            std::fs::canonicalize(tutorial_folder)
+                .unwrap_or_else(|_| PathBuf::from(tutorial_folder))
+                .to_string_lossy(),
+            tutorial_video.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+        ),
+    );
 
     let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
 
@@ -1755,15 +1878,17 @@ fn process_single_mode(
             // 模板视频实际时长（temp_output_path 已经是链式 xfade 后的产物）
             let template_total_duration = probe_video_duration(&temp_output_path.to_string_lossy())?;
             info!("模板视频时长: {:.2}秒", template_total_duration);
+            push_log(tasks, task_id, LogLevel::Info, video_index, format!("模板视频时长: {:.2}秒", template_total_duration));
 
             // 教程片段时长
             let tutorial_duration = probe_video_duration(&tutorial_scaled.to_string_lossy())?;
             info!("教程片段时长: {:.2}秒", tutorial_duration);
-            let _ = tutorial_duration; // 仅用于日志
+            push_log(tasks, task_id, LogLevel::Info, video_index, format!("教程片段时长: {:.2}秒", tutorial_duration));
 
             // 单次 xfade：模板尾部 transition_duration 秒与教程头部交叠
             let tutorial_transition = get_random_transition_type();
             info!("模板与教程转场类型: {}", tutorial_transition);
+            push_log(tasks, task_id, LogLevel::Info, video_index, format!("模板与教程转场类型: {}", tutorial_transition));
             let xfade_offset = (template_total_duration - transition_duration).max(0.0);
 
             let encoder = detect_best_encoder();
@@ -1838,16 +1963,28 @@ fn process_single_mode(
         let actual_audio_duration = probe_video_duration(audio_path)
             .unwrap_or_else(|e| {
                 info!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e);
+                push_log(tasks, task_id, LogLevel::Warn, video_index, format!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e));
                 audio_duration
             });
         if actual_audio_duration > 0.0 {
             let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
             info!("当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
                 video_duration, actual_audio_duration, audio_duration);
+            push_log(
+                tasks,
+                task_id,
+                LogLevel::Info,
+                video_index,
+                format!(
+                    "当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
+                    video_duration, actual_audio_duration, audio_duration
+                ),
+            );
 
             if video_duration < actual_audio_duration {
                 let duration_needed = actual_audio_duration - video_duration;
                 info!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed);
+                push_log(tasks, task_id, LogLevel::Info, video_index, format!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed));
 
                 let supplement_step_id = format!("video_{}__supplement", video_index);
                 push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
@@ -2190,7 +2327,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     let task_id = task.id.clone();
     let config_clone = config.clone();
     let output_dir = task_output_dir.clone();
-    let tutorial_used_global = state.used_tutorial_videos.clone();
+    let tutorial_used_by_config = state.used_tutorial_videos.clone();
     let app_data_file = state.app_data_file.clone();
 
     thread::spawn(move || {
@@ -2279,7 +2416,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             let config_clone = config_clone.clone();
             let output_dir = output_dir.clone();
             let task_temp_dir = task_temp_dir.clone();
-            let tutorial_used_global = tutorial_used_global.clone();
+            let tutorial_used_by_config = tutorial_used_by_config.clone();
             let app_data_file = app_data_file.clone();
             let completed_count = completed_count.clone();
             let failed_count = failed_count.clone();
@@ -2318,6 +2455,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
                     let video_step_id = format!("video_{}", video_index);
                     push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 开始处理", video_index), StepStatus::Running, None);
+                    push_log(&tasks_clone, &task_id, LogLevel::Info, video_index, format!("工作线程 {} 开始处理视频{}", worker_id, video_index));
 
                     let output_filename = format!("{}_{}.mp4", config_clone.name, video_index);
 
@@ -2334,7 +2472,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     }
 
                     // 获取used_per_folder的锁
-                    let mut used_per_folder_guard = used_per_folder.lock().unwrap();
+                    let used_per_folder_guard = used_per_folder.lock().unwrap();
                     let mut local_used_per_folder = used_per_folder_guard.clone();
                     drop(used_per_folder_guard);
 
@@ -2352,7 +2490,8 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                         &output_dir,
                         &output_filename,
                         &mut local_used_per_folder,
-                        &tutorial_used_global,
+                        &tutorial_used_by_config,
+                        &config_clone.id,
                         &app_data_file,
                         &config_clone.root_folder,
                         config_clone.enable_transition,
@@ -2374,6 +2513,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     match result {
                         Ok(()) => {
                             info!("视频 {} 处理成功", video_index);
+                            push_log(&tasks_clone, &task_id, LogLevel::Info, video_index, format!("视频{} 处理成功", video_index));
                             push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 完成", video_index), StepStatus::Completed, None);
                             let mut count = completed_count.lock().unwrap();
                             *count += 1;
@@ -2388,6 +2528,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                         }
                         Err(e) => {
                             error!("视频 {} 处理失败: {}", video_index, e);
+                            push_log(&tasks_clone, &task_id, LogLevel::Error, video_index, format!("视频{} 处理失败: {}", video_index, e));
                             if cancel_flag.load(Ordering::SeqCst) {
                                 push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 已取消", video_index), StepStatus::Error, Some(e.clone()));
                                 break;
@@ -2467,7 +2608,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         }
 
         // 保存任务状态到磁盘
-        if let Err(e) = save_tasks_to_disk(&app_data_file, &tasks_clone, &configs_clone, &tutorial_used_global) {
+        if let Err(e) = save_tasks_to_disk(&app_data_file, &tasks_clone, &configs_clone, &tutorial_used_by_config) {
             error!("保存任务状态到磁盘失败: {}", e);
         }
 
@@ -2642,8 +2783,20 @@ pub fn get_tasks(state: tauri::State<AppState>) -> Result<Vec<Task>, String> {
 
 #[tauri::command]
 pub fn refresh_tasks_from_disk(state: tauri::State<AppState>) -> Result<Vec<Task>, String> {
-    let tasks = state.tasks.read().map_err(|e| e.to_string())?;
-    Ok(tasks.clone())
+    let runtime = crate::storage::load_runtime_store()?;
+    {
+        let mut configs = state.configs.write().map_err(|e| e.to_string())?;
+        *configs = runtime.app_data.configs.clone();
+    }
+    {
+        let mut tasks = state.tasks.write().map_err(|e| e.to_string())?;
+        *tasks = runtime.app_data.tasks.clone();
+    }
+    {
+        let mut used = state.used_tutorial_videos.write().map_err(|e| e.to_string())?;
+        *used = runtime.used_tutorial_by_config;
+    }
+    Ok(runtime.app_data.tasks)
 }
 
 #[tauri::command]
@@ -2691,10 +2844,11 @@ mod tests {
     use super::{
         build_chained_xfade_filter_complex, compute_segment_offsets, duration_cache,
         filter_videos_by_min_duration, get_random_transition_type, resolve_task_output_dir,
-        sanitize_task_name,
+        sanitize_task_name, DurationCacheEntry,
     };
     use std::collections::HashSet;
     use std::path::PathBuf;
+    use std::time::Instant;
 
     #[test]
     fn build_chained_xfade_filter_complex_should_use_processed_streams() {
@@ -2820,8 +2974,24 @@ mod tests {
 
         {
             let mut guard = duration_cache().write().unwrap();
-            guard.insert(long_path.to_string_lossy().to_string(), 60.0);
-            guard.insert(short_path.to_string_lossy().to_string(), 5.0);
+            guard.insert(
+                long_path.to_string_lossy().to_string(),
+                DurationCacheEntry {
+                    duration: 60.0,
+                    file_mtime: None,
+                    file_size: None,
+                    cached_at: Instant::now(),
+                },
+            );
+            guard.insert(
+                short_path.to_string_lossy().to_string(),
+                DurationCacheEntry {
+                    duration: 5.0,
+                    file_mtime: None,
+                    file_size: None,
+                    cached_at: Instant::now(),
+                },
+            );
         }
 
         let videos = vec![long_path.clone(), short_path.clone()];

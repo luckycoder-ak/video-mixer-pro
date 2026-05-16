@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Task, TaskStep } from '../types';
+import { LogEntry, Task, TaskStep } from '../types';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 
 interface Props {
@@ -10,9 +10,8 @@ interface Props {
 
 export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
-  const [hoveredTask, setHoveredTask] = useState<Task | null>(null);
-  const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
-  const [hoverTimeout, setHoverTimeout] = useState<number | null>(null);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
+  const [detailTab, setDetailTab] = useState<string>('');
   const [deleteModalTask, setDeleteModalTask] = useState<Task | null>(null);
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -26,12 +25,21 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   }, [onRefresh]);
 
   useEffect(() => {
-    return () => {
-      if (hoverTimeout) {
-        clearTimeout(hoverTimeout);
+    if (!detailTask) return;
+    const latestTask = tasks.find((task) => task.id === detailTask.id);
+    if (latestTask) {
+      setDetailTask(latestTask);
+    }
+  }, [tasks, detailTask]);
+
+  useEffect(() => {
+    if (detailTask) {
+      const tabs = getDetailTabs(detailTask);
+      if (!detailTab || !tabs.some((tab) => tab.key === detailTab)) {
+        setDetailTab(tabs[0]?.key || '');
       }
-    };
-  }, [hoverTimeout]);
+    }
+  }, [detailTask, detailTab]);
 
   const handlePauseTask = async (task: Task) => {
     try {
@@ -224,12 +232,38 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     });
   };
 
+  const getTaskStartTime = (task: Task) => {
+    if (task.started_at) {
+      return new Date(task.started_at);
+    }
+
+    const stepStartTimes = (task.progress_steps || [])
+      .map((step) => step.started_at)
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (stepStartTimes.length > 0) {
+      return stepStartTimes[0];
+    }
+
+    if (task.created_at) {
+      const createdAt = new Date(task.created_at);
+      if (!Number.isNaN(createdAt.getTime())) {
+        return createdAt;
+      }
+    }
+
+    return null;
+  };
+
   const calculateExecutionTime = (task: Task): { totalSeconds: number; averageSeconds: number } => {
-    if (!task.started_at) {
+    const startTime = getTaskStartTime(task);
+    if (!startTime) {
       return { totalSeconds: 0, averageSeconds: 0 };
     }
 
-    const startTime = new Date(task.started_at);
     const endTime = task.completed_at ? new Date(task.completed_at) : new Date();
 
     const totalMs = endTime.getTime() - startTime.getTime();
@@ -241,29 +275,115 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
     return { totalSeconds, averageSeconds };
   };
 
+  const formatSeconds = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  const calculateStepDuration = (step: TaskStep) => {
+    if (!step.started_at) return null;
+    const start = new Date(step.started_at).getTime();
+    const end = step.completed_at ? new Date(step.completed_at).getTime() : Date.now();
+    return Math.max(0, Math.round((end - start) / 1000));
+  };
+
+  const getCurrentRunningStep = (task: Task) => {
+    const runningSteps = (task.progress_steps || []).filter((step) => step.status === 'running');
+    return runningSteps[runningSteps.length - 1] || null;
+  };
+
+  const getStepVideoIndex = (step: TaskStep) => {
+    const match = step.id.match(/^video_(\d+)(?:__.*)?$/) || step.id.match(/^segment_(\d+)__/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
+  const getVisibleSteps = (task: Task, tab: string = '') => {
+    return [...(task.progress_steps || [])]
+      .filter(step => !/^video_\d+$/.test(step.id))
+      .filter(step => {
+        const stepVideoIndex = getStepVideoIndex(step);
+        if (tab.startsWith('video-')) {
+          const targetVideo = parseInt(tab.replace('video-', ''), 10);
+          return stepVideoIndex === targetVideo;
+        }
+        return true;
+      })
+      .sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id));
+  };
+
+  const getDetailTabs = (task: Task) => {
+    const videoIndexes = new Set<number>();
+    (task.logs || []).forEach((log) => {
+      if (log.video_index > 0) {
+        videoIndexes.add(log.video_index);
+      }
+    });
+    (task.progress_steps || []).forEach((step) => {
+      const stepVideoIndex = getStepVideoIndex(step);
+      if (stepVideoIndex > 0) {
+        videoIndexes.add(stepVideoIndex);
+      }
+    });
+
+    return [...videoIndexes].sort((a, b) => a - b).map((videoIndex) => ({
+      key: `video-${videoIndex}`,
+      label: `视频${videoIndex}`,
+    }));
+  };
+
+  const getFilteredLogs = (task: Task, tab: string = '') => {
+    const logs = [...(task.logs || [])].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    if (tab.startsWith('video-')) {
+      const targetVideo = parseInt(tab.replace('video-', ''), 10);
+      return logs.filter((log) => log.video_index === targetVideo);
+    }
+    return logs;
+  };
+
+  const getLogLevelColor = (level: LogEntry['level']) => {
+    switch (level) {
+      case 'error':
+        return 'text-red-700 bg-red-50 border-red-200';
+      case 'warn':
+        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+      default:
+        return 'text-gray-700 bg-gray-50 border-gray-200';
+    }
+  };
+
   const getStepOrder = (id: string): number => {
     const orderMap: Record<string, number> = {
       'init': 0,
       'finish': 9999,
     };
     if (orderMap[id] !== undefined) return orderMap[id];
-    
-    if (id.startsWith('segment_')) {
-      const parts = id.split('_');
-      const videoIndex = parseInt(parts[1], 10);
-      const subStep = parts[2];
+
+    const match = id.match(/^video_(\d+)(?:__(.+))?$/);
+    if (match) {
+      const videoIndex = parseInt(match[1], 10);
+      const subStep = match[2] || '';
       const subOrderMap: Record<string, number> = {
-        'scan': 0,
-        'process': 1,
-        'merge': 2
+        '': 0,
+        'scan_1': 10,
+        'scan_2': 20,
+        'scan_3': 30,
+        'scan_4': 40,
+        'segment_1': 50,
+        'segment_2': 60,
+        'segment_3': 70,
+        'segment_4': 80,
+        'tutorial': 90,
+        'xfade': 100,
+        'concat': 110,
+        'supplement': 120,
+        'audio': 130,
+        'subtitle': 140,
       };
-      return videoIndex * 100 + (subOrderMap[subStep] || 0);
-    }
-    
-    if (id.startsWith('video_')) {
-      const parts = id.split('_');
-      const videoIndex = parseInt(parts[1], 10);
-      return videoIndex * 100 - 1;
+      return videoIndex * 1000 + (subOrderMap[subStep] ?? 900);
     }
     
     return 999;
@@ -272,39 +392,13 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
   const handleContextMenu = (e: React.MouseEvent, task: Task) => {
     e.preventDefault();
     setContextMenu({ x: e.pageX, y: e.pageY, task });
-    setHoveredTask(null);
+    setDetailTask(null);
   };
 
-  const handleMouseEnter = (e: React.MouseEvent, task: Task) => {
-    if (task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'error' || task.status === 'partial') {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const popupHeight = 400;
-      const windowHeight = window.innerHeight;
-      const bottomSpace = windowHeight - rect.bottom;
-      
-      let popupY = rect.top;
-      if (bottomSpace < popupHeight && rect.top > popupHeight) {
-        popupY = rect.top - popupHeight;
-      }
-      
-      const newPosition = { x: rect.left + 10, y: popupY };
-      
-      const timeout = window.setTimeout(() => {
-        setHoverPosition(newPosition);
-        setHoveredTask(task);
-      }, 2000);
-      
-      setHoverTimeout(timeout);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimeout) {
-      clearTimeout(hoverTimeout);
-      setHoverTimeout(null);
-    }
-    setHoveredTask(null);
-    setHoverPosition(null);
+  const openDetailTask = (task: Task) => {
+    const tabs = getDetailTabs(task);
+    setDetailTab(tabs[0]?.key || '');
+    setDetailTask(task);
   };
 
   return (
@@ -384,8 +478,6 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                       selectedTasks.has(task.id) ? 'bg-blue-50' : ''
                     }`}
                     onContextMenu={(e) => handleContextMenu(e, task)}
-                    onMouseEnter={(e) => handleMouseEnter(e, task)}
-                    onMouseLeave={handleMouseLeave}
                   >
                     <div className="col-span-1">
                       <input
@@ -435,6 +527,11 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                           />
                         </div>
                       </div>
+                      {getCurrentRunningStep(task) && (
+                        <div className="mt-1 text-xs text-blue-700 truncate" title={getCurrentRunningStep(task)?.name}>
+                          当前步骤: {getCurrentRunningStep(task)?.name}
+                        </div>
+                      )}
                     </div>
                     <div className="col-span-1">
                       <span className="text-xs text-gray-500">
@@ -451,6 +548,12 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
                             打开文件夹
                           </button>
                         )}
+                        <button
+                          onClick={() => openDetailTask(task)}
+                          className="px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors"
+                        >
+                          详情
+                        </button>
                         {task.status === 'paused' ? (
                           <button
                             onClick={() => handleResumeTask(task)}
@@ -547,128 +650,185 @@ export const TaskList: React.FC<Props> = ({ tasks, onRefresh }) => {
         </>
       )}
 
-      {hoveredTask && hoverPosition && (
-        <div
-          className="fixed z-50 bg-white rounded-xl shadow-2xl w-80 max-h-[60vh] overflow-hidden animate-fadeIn"
-          style={{ left: hoverPosition.x, top: hoverPosition.y }}
-        >
-          <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-4 py-3">
-            <h3 className="text-white text-sm font-semibold flex items-center gap-2">
-              <span>📊</span>
-              <span>任务进度</span>
-            </h3>
-            <p className="text-gray-400 text-xs mt-1 truncate">{hoveredTask.task_name}</p>
-          </div>
+      {detailTask && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setDetailTask(null)} />
+          <div className="fixed inset-0 z-50 overflow-y-auto p-6">
+            <div className="mx-auto my-4 flex w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-fadeIn max-h-[calc(100vh-32px)]">
+              <div className="flex items-start justify-between px-6 py-4 bg-gradient-to-r from-gray-900 to-gray-800">
+                <div>
+                  <h3 className="text-white text-lg font-semibold flex items-center gap-2">
+                    <span>📊</span>
+                    <span>任务详情</span>
+                  </h3>
+                  <p className="text-gray-300 text-sm mt-1 break-all">{detailTask.task_name}</p>
+                </div>
+                <button
+                  onClick={() => setDetailTask(null)}
+                  className="text-white/80 hover:text-white text-xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
 
-          <div className="px-4 py-3 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-xs">进度</span>
-              <span className="font-semibold text-gray-800 text-sm">
-                {hoveredTask.completed_count}/{hoveredTask.total_count}
-              </span>
-            </div>
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all duration-300"
-                style={{ width: `${(hoveredTask.completed_count / hoveredTask.total_count) * 100}%` }}
-              />
-            </div>
-            {hoveredTask.current_video > 0 && (
-              <p className="text-gray-500 text-xs mt-2">
-                当前: 第 {hoveredTask.current_video} 个视频
-              </p>
-            )}
-          </div>
-
-          <div className="p-3 overflow-y-auto max-h-[30vh]">
-            <h4 className="text-gray-800 font-semibold text-xs mb-3 flex items-center gap-1">
-              <span>✅</span>
-              <span>步骤清单</span>
-            </h4>
-            
-            {hoveredTask.progress_steps && hoveredTask.progress_steps.length > 0 ? (
-              <div className="space-y-2">
-                {[...hoveredTask.progress_steps]
-                  .filter(step => !step.id.startsWith('video_'))
-                  .filter(step => {
-                    if (step.id === 'init' || step.id === 'finish') return true;
-                    
-                    if (step.id.startsWith('segment_')) {
-                      const parts = step.id.split('_');
-                      const videoIndex = parseInt(parts[1], 10);
-                      return videoIndex === hoveredTask.current_video;
-                    }
-                    
-                    return true;
-                  })
-                  .sort((a, b) => getStepOrder(a.id) - getStepOrder(b.id))
-                  .map((step) => {
-                    const isSubStep = step.id.startsWith('segment_');
-                    return (
-                      <div
-                        key={step.id}
-                        className={`flex items-start gap-2 rounded-lg border text-xs ${getStepStatusColor(step.status)} ${isSubStep ? 'py-2 px-3' : 'p-2'}`}
-                      >
-                        <div className="mt-0.5">{getStepIcon(step.status)}</div>
-                        <div className="flex-1">
-                          <p className={`font-medium ${
-                            step.status === 'completed' ? 'text-green-700' :
-                            step.status === 'running' ? 'text-blue-700' :
-                            step.status === 'error' ? 'text-red-700' : 'text-gray-600'
-                          }`}>
-                            {step.name}
-                          </p>
-                          {step.error && (
-                            <p className="text-red-500 text-xs mt-1 truncate">
-                              {step.error}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                
-                {hoveredTask.completed_count > 0 || hoveredTask.total_count > 0 ? (
-                  <div className="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
-                    已完成: {hoveredTask.completed_count}/{hoveredTask.total_count} 个视频
+              <div className="grid grid-cols-3 gap-4 px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div className="rounded-xl bg-white border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">执行进度</div>
+                  <div className="text-lg font-semibold text-gray-800">
+                    {detailTask.completed_count}/{detailTask.total_count}
                   </div>
-                ) : null}
+                  <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all"
+                      style={{ width: `${(detailTask.completed_count / detailTask.total_count) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">当前步骤</div>
+                  <div className="text-sm font-semibold text-blue-700 break-all">
+                    {getCurrentRunningStep(detailTask)?.name || '暂无运行中的步骤'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    当前视频: {detailTask.current_video || '-'}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-white border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">累计耗时</div>
+                  <div className="text-lg font-semibold text-gray-800">
+                    {formatSeconds(calculateExecutionTime(detailTask).totalSeconds)}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    平均每个视频 {formatSeconds(calculateExecutionTime(detailTask).averageSeconds)}
+                  </div>
+                </div>
+              </div>
 
-                {hoveredTask.failed_videos && hoveredTask.failed_videos.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <h4 className="text-red-700 font-semibold text-xs mb-2 flex items-center gap-1">
-                      <span>❌</span>
-                      <span>失败清单（{hoveredTask.failed_videos.length}）</span>
-                    </h4>
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {hoveredTask.failed_videos.map((msg, idx) => (
+              {getDetailTabs(detailTask).length > 0 && (
+                <div className="px-6 py-3 border-b border-gray-200 bg-white">
+                  <div className="flex flex-wrap gap-2">
+                    {getDetailTabs(detailTask).map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setDetailTab(tab.key)}
+                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                          detailTab === tab.key
+                            ? 'bg-blue-50 border-blue-300 text-blue-700'
+                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid min-h-0 flex-1 grid-cols-2 gap-0">
+                <div className="border-r border-gray-200 overflow-y-auto p-6 pb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-base font-semibold text-gray-800">步骤清单</h4>
+                    <span className="text-xs text-gray-500">{getVisibleSteps(detailTask, detailTab).length} 个步骤</span>
+                  </div>
+                  {getVisibleSteps(detailTask, detailTab).length > 0 ? (
+                    <div className="space-y-3">
+                      {getVisibleSteps(detailTask, detailTab).map((step) => {
+                        const duration = calculateStepDuration(step);
+                        const isSubStep = step.id.startsWith('segment_');
+                        return (
+                          <div
+                            key={step.id}
+                            className={`rounded-xl border ${getStepStatusColor(step.status)} ${isSubStep ? 'px-4 py-3' : 'p-4'}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5">{getStepIcon(step.status)}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className={`font-medium ${
+                                    step.status === 'completed' ? 'text-green-700' :
+                                    step.status === 'running' ? 'text-blue-700' :
+                                    step.status === 'error' ? 'text-red-700' : 'text-gray-600'
+                                  }`}>
+                                    {step.name}
+                                  </p>
+                                  <div className="text-xs text-gray-500 whitespace-nowrap">
+                                    {duration !== null ? `耗时 ${formatSeconds(duration)}` : '未开始'}
+                                  </div>
+                                </div>
+                                <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-3">
+                                  <span>开始: {step.started_at ? formatDate(step.started_at) : '-'}</span>
+                                  <span>结束: {step.completed_at ? formatDate(step.completed_at) : '-'}</span>
+                                </div>
+                                {step.error && (
+                                  <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 break-all whitespace-pre-wrap">
+                                    {step.error}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-500 py-10">
+                      <div className="text-3xl mb-2">⏳</div>
+                      <p className="text-sm">正在初始化步骤...</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-y-auto p-6 pb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-base font-semibold text-gray-800">执行日志</h4>
+                    <span className="text-xs text-gray-500">{getFilteredLogs(detailTask, detailTab).length} 条</span>
+                  </div>
+
+                  {getFilteredLogs(detailTask, detailTab).length > 0 ? (
+                    <div className="space-y-2">
+                      {getFilteredLogs(detailTask, detailTab).map((log, idx) => (
                         <div
-                          key={idx}
-                          className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 break-all whitespace-pre-wrap"
+                          key={`${log.timestamp}-${idx}`}
+                          className={`rounded-xl border px-3 py-3 text-sm ${getLogLevelColor(log.level)}`}
                         >
-                          {msg}
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="font-semibold uppercase">{log.level}</span>
+                            <span>{formatDate(log.timestamp)}</span>
+                          </div>
+                          {log.video_index > 0 && (
+                            <div className="mt-1 text-xs text-gray-500">关联视频: 第 {log.video_index} 个</div>
+                          )}
+                          <div className="mt-2 break-all whitespace-pre-wrap leading-6">{log.message}</div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {hoveredTask.error_message && (!hoveredTask.failed_videos || hoveredTask.failed_videos.length === 0) && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 break-all whitespace-pre-wrap">
-                      {hoveredTask.error_message}
+                  ) : (
+                    <div className="text-center text-gray-500 py-10">
+                      <div className="text-3xl mb-2">📝</div>
+                      <p className="text-sm">暂无日志输出</p>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {detailTask.failed_videos && detailTask.failed_videos.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <h4 className="text-red-700 font-semibold text-sm mb-3">失败清单（{detailTask.failed_videos.length}）</h4>
+                      <div className="space-y-2">
+                        {detailTask.failed_videos.map((msg, idx) => (
+                          <div
+                            key={idx}
+                            className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 break-all whitespace-pre-wrap"
+                          >
+                            {msg}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="text-center text-gray-500 py-4">
-                <div className="text-2xl mb-1">⏳</div>
-                <p className="text-xs">正在初始化...</p>
-              </div>
-            )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {deleteModalTask && (

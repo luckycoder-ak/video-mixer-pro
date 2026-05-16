@@ -29,6 +29,15 @@ export interface TaskStep {
   name: string;
   status: 'pending' | 'running' | 'completed' | 'error';
   error?: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'warn' | 'error';
+  video_index: number;
+  message: string;
 }
 
 export interface Task {
@@ -48,6 +57,7 @@ export interface Task {
   error_message: string | null;
   current_video: number;
   progress_steps: TaskStep[];
+  logs: LogEntry[];
 }
 
 export const createDefaultConfig = (): VideoConfig => ({
