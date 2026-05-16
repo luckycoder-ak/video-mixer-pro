@@ -33,6 +33,25 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      # 下载 FFmpeg 官方静态构建并按 Tauri sidecar 命名规范放入 binaries/
+      # 这样 ffmpeg.exe 会被打包进最终 .msi/.exe 安装包，用户无需单独安装
+      - name: Download & bundle ffmpeg sidecar
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          $extract = "$env:RUNNER_TEMP\ffmpeg-extract"
+          Write-Host "Downloading ffmpeg static build from $url"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $ffmpegExe = (Get-ChildItem -Path $extract -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1).FullName
+          if (-not $ffmpegExe) { throw 'ffmpeg.exe not found in archive' }
+          New-Item -ItemType Directory -Force -Path 'src-tauri/binaries' | Out-Null
+          # Tauri sidecar 命名要求：<name>-<target-triple>.exe
+          Copy-Item $ffmpegExe 'src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe'
+          Write-Host "Sidecar ffmpeg ready: src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe"
+
       - name: Install frontend dependencies
         run: npm ci
 

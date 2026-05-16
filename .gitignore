@@ -22,6 +22,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Sidecar binaries (downloaded by CI per platform)
+src-tauri/binaries/ffmpeg-*
+
 # Environment
 .env
 .env.local

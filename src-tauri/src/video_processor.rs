@@ -9,16 +9,41 @@ use std::time::Duration;
 
 fn find_ffmpeg_executable() -> String {
     static FFMPEG_PATH: OnceLock<String> = OnceLock::new();
-    
+
     FFMPEG_PATH.get_or_init(|| {
+        // 优先使用与可执行文件同目录下的 sidecar ffmpeg（打包模式）
+        // sidecar 命名规则：ffmpeg-<target-triple>(.exe)
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                #[cfg(target_os = "windows")]
+                let sidecar_names: &[&str] = &["ffmpeg.exe", "ffmpeg-x86_64-pc-windows-msvc.exe"];
+                #[cfg(target_os = "macos")]
+                let sidecar_names: &[&str] = &[
+                    "ffmpeg",
+                    "ffmpeg-aarch64-apple-darwin",
+                    "ffmpeg-x86_64-apple-darwin",
+                ];
+                #[cfg(target_os = "linux")]
+                let sidecar_names: &[&str] = &["ffmpeg", "ffmpeg-x86_64-unknown-linux-gnu"];
+
+                for name in sidecar_names {
+                    let candidate = exe_dir.join(name);
+                    if candidate.exists() {
+                        info!("使用捆绑的 ffmpeg sidecar: {}", candidate.display());
+                        return candidate.to_string_lossy().to_string();
+                    }
+                }
+            }
+        }
+
         #[cfg(target_os = "macos")]
         {
-            // 在 macOS 上，优先检查 ffmpeg-full (Homebrew keg-only)
+            // macOS 开发环境回退：优先 ffmpeg-full (Homebrew keg-only)
             let ffmpeg_full_paths = vec![
                 "/usr/local/opt/ffmpeg-full/bin/ffmpeg",
                 "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg",
             ];
-            
+
             for path in ffmpeg_full_paths {
                 if std::path::Path::new(path).exists() {
                     info!("找到 ffmpeg-full: {}", path);
@@ -26,8 +51,8 @@ fn find_ffmpeg_executable() -> String {
                 }
             }
         }
-        
-        // 默认使用系统的 ffmpeg
+
+        // 默认使用系统 PATH 中的 ffmpeg
         "ffmpeg".to_string()
     }).clone()
 }
