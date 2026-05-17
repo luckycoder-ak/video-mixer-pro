@@ -1754,23 +1754,50 @@ fn process_single_mode(
     let tutorial_step_id = format!("video_{}__tutorial", video_index);
     push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
 
-    // 从当前配置的已用集合里过滤出可用的教程素材
+    // 从当前配置的已用集合里过滤出可用的教程素材，同时清理已不存在的视频
     let tutorial_video = {
         let used_snapshot: HashSet<String> = tutorial_used_by_config
             .read()
             .ok()
             .and_then(|guard| guard.get(config_id).cloned())
             .unwrap_or_default();
+        
+        // 清理掉已不存在的视频
+        {
+            if let Ok(mut guard) = tutorial_used_by_config.write() {
+                if let Some(used_set) = guard.get_mut(config_id) {
+                    let mut to_remove = Vec::new();
+                    for used in used_set.iter() {
+                        let path = PathBuf::from(used);
+                        if !path.exists() {
+                            to_remove.push(used.clone());
+                        }
+                    }
+                    for remove in to_remove {
+                        used_set.remove(&remove);
+                    }
+                }
+            }
+        }
+        
+        // 重新获取清理后的 used 集合
+        let used_cleaned: HashSet<String> = tutorial_used_by_config
+            .read()
+            .ok()
+            .and_then(|guard| guard.get(config_id).cloned())
+            .unwrap_or_default();
+        
         let available: Vec<PathBuf> = tutorial_videos
             .iter()
-            .filter(|v| !used_snapshot.contains(&v.to_string_lossy().to_string()))
+            .filter(|v| !used_cleaned.contains(&v.to_string_lossy().to_string()))
             .cloned()
             .collect();
+        
         if available.is_empty() {
             let err = format!(
                 "教程素材已全部使用过，请补充新素材到: {}（配置已用 {} 个）",
                 tutorial_folder,
-                used_snapshot.len()
+                used_cleaned.len()
             );
             push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
             return Err(err);
@@ -2924,13 +2951,49 @@ pub fn check_tutorial_available(
         .cloned()
         .unwrap_or_default();
     
-    let used_count = used_snapshot.len();
-    let available_count = total_count.saturating_sub(used_count);
+    // 清理掉已不存在的视频
+    {
+        if let Ok(mut guard) = state.used_tutorial_videos.write() {
+            if let Some(used_set) = guard.get_mut(&config_id) {
+                let mut to_remove = Vec::new();
+                for used in used_set.iter() {
+                    let path = PathBuf::from(used);
+                    if !path.exists() {
+                        to_remove.push(used.clone());
+                    }
+                }
+                for remove in to_remove {
+                    used_set.remove(&remove);
+                }
+            }
+        }
+    }
+    
+    // 重新获取清理后的 used 集合
+    let used_cleaned: HashSet<String> = state
+        .used_tutorial_videos
+        .read()
+        .map_err(|e| e.to_string())?
+        .get(&config_id)
+        .cloned()
+        .unwrap_or_default();
+    
+    // 只统计同时存在于当前文件夹中的已使用视频（已删除的不计入）
+    let mut actual_used_count = 0;
+    let mut available_videos = Vec::new();
+    for video_path in all_videos {
+        if used_cleaned.contains(&video_path) {
+            actual_used_count += 1;
+        } else {
+            available_videos.push(video_path);
+        }
+    }
+    let available_count = available_videos.len();
     
     let result = TutorialCheckResult {
         has_available: available_count > 0,
         total_count,
-        used_count,
+        used_count: actual_used_count,
         available_count,
     };
     
