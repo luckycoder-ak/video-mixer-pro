@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { VideoConfig } from '../types';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Props {
   config: VideoConfig;
@@ -8,7 +9,29 @@ interface Props {
 }
 
 export const GenerateModal: React.FC<Props> = ({ config, onGenerate, onClose }) => {
-  const [count, setCount] = useState(5);
+  const [count, setCount] = useState(1);
+  const [availableCount, setAvailableCount] = useState(0);
+
+  useEffect(() => {
+    const checkAvailable = async () => {
+      try {
+        const checkResult = await invoke<{
+          has_available: boolean;
+          total_count: number;
+          used_count: number;
+          available_count: number;
+        }>('check_tutorial_available', {
+          configId: config.id,
+          tutorialFolder: config.tutorial_folder,
+        });
+        setAvailableCount(checkResult.available_count);
+        setCount(Math.min(checkResult.available_count, 5));
+      } catch (error) {
+        console.error('Failed to check tutorial available:', error);
+      }
+    };
+    checkAvailable();
+  }, [config]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -33,6 +56,11 @@ export const GenerateModal: React.FC<Props> = ({ config, onGenerate, onClose }) 
             <p className="text-sm text-gray-600">
               即将为配置 <strong className="text-gray-800">{config.name}</strong> 创建生成任务
             </p>
+            {availableCount > 0 && (
+              <p className="text-sm text-green-600 mt-2">
+                📚 教程文件夹可用: <strong>{availableCount}</strong> 个视频
+              </p>
+            )}
           </div>
 
           <div className="mb-6">
@@ -49,13 +77,16 @@ export const GenerateModal: React.FC<Props> = ({ config, onGenerate, onClose }) 
               <input
                 type="number"
                 value={count}
-                onChange={(e) => setCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+                onChange={(e) => {
+                  const value = Math.max(1, parseInt(e.target.value) || 1);
+                  setCount(Math.min(value, availableCount || 100));
+                }}
                 min="1"
-                max="100"
+                max={availableCount || 100}
                 className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-center font-semibold text-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               <button
-                onClick={() => setCount(Math.min(100, count + 1))}
+                onClick={() => setCount(Math.min(availableCount || 100, count + 1))}
                 className="w-10 h-10 border border-gray-300 bg-white rounded-lg flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors text-lg font-medium"
               >
                 +

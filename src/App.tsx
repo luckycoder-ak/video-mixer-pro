@@ -108,6 +108,14 @@ function App() {
         return;
       }
       
+      // 检查可用数量是否足够生成指定数量
+      if (checkResult.available_count < count) {
+        setShowGenerateModal(false);
+        setGeneratingConfig(null);
+        showNotification('无法创建任务', `教程视频数量不足，当前可用 ${checkResult.available_count} 个，请减少生成数量或补充素材`);
+        return;
+      }
+      
       const newTask = await invoke<Task>('create_task', { configName: config.name, count });
       const newTasks = [...tasks, newTask];
       setTasks(newTasks);
