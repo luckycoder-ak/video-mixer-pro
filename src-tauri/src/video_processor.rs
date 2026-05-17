@@ -2028,82 +2028,6 @@ fn process_single_mode(
             .map_err(|e| format!("复制视频文件失败: {}", e))?;
     }
 
-    // 检查视频时长是否小于音频时长，如果小于则补齐
-    // 关键：以 ffprobe 实际探测的音频时长为准，避免外部传入的 audio_duration
-    // 与真实音频文件不一致导致补素材逻辑与下游 -shortest 口径错位。
-    if !audio_path.is_empty() {
-        let actual_audio_duration = probe_video_duration(audio_path)
-            .unwrap_or_else(|e| {
-                info!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e);
-                push_log(tasks, task_id, LogLevel::Warn, video_index, format!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e));
-                audio_duration
-            });
-        if actual_audio_duration > 0.0 {
-            let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
-            info!("当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
-                video_duration, actual_audio_duration, audio_duration);
-            push_log(
-                tasks,
-                task_id,
-                LogLevel::Info,
-                video_index,
-                format!(
-                    "当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
-                    video_duration, actual_audio_duration, audio_duration
-                ),
-            );
-
-            if video_duration < actual_audio_duration {
-                let duration_needed = actual_audio_duration - video_duration;
-                info!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed);
-                push_log(tasks, task_id, LogLevel::Info, video_index, format!("视频时长不足，需要补充 {:.2} 秒素材", duration_needed));
-
-                let supplement_step_id = format!("video_{}__supplement", video_index);
-                push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Running, None);
-
-                let temp_supplemented_path = video_temp_dir.join(format!("video_{}_supplemented.mp4", video_index));
-                let supplement_source_video = first_segment_primary_video
-                    .as_ref()
-                    .ok_or_else(|| "模板第一个片段未选中可用于补尾的素材".to_string())?;
-                push_log(
-                    tasks,
-                    task_id,
-                    LogLevel::Info,
-                    video_index,
-                    format!(
-                        "使用模板第一个片段素材 {} 的尾部补充 {:.2} 秒",
-                        supplement_source_video
-                            .file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or_default(),
-                        duration_needed
-                    ),
-                );
-
-                match supplement_video_with_first_segment_tail(
-                    task_id,
-                    cancel,
-                    &temp_with_tutorial_path,
-                    &temp_supplemented_path,
-                    duration_needed,
-                    supplement_source_video,
-                    output_width,
-                    output_height,
-                ) {
-                    Ok(()) => {
-                        push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Completed, None);
-                        fs::copy(&temp_supplemented_path, &temp_with_tutorial_path)
-                            .map_err(|e| format!("复制补充后的视频失败: {}", e))?;
-                    }
-                    Err(e) => {
-                        push_step(tasks, task_id, &supplement_step_id, &format!("视频{} - 补充素材", video_index), StepStatus::Error, Some(e.clone()));
-                        return Err(e);
-                    }
-                }
-            }
-        }
-    }
-
     // 音频处理：直接按最短长度截断，不做素材补充
     // 若视频比音频长，截断视频；若音频比视频长，截断音频
     if !audio_path.is_empty() {
@@ -2118,6 +2042,19 @@ fn process_single_mode(
             });
         
         let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
+        
+        info!("当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
+            video_duration, actual_audio_duration, audio_duration);
+        push_log(
+            tasks,
+            task_id,
+            LogLevel::Info,
+            video_index,
+            format!(
+                "当前视频时长: {:.2}秒, 音频实际时长: {:.2}秒（配置值 {:.2}秒）",
+                video_duration, actual_audio_duration, audio_duration
+            ),
+        );
         
         // 取最短时长作为最终输出时长
         let final_duration = if video_duration < actual_audio_duration {
