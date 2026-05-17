@@ -2982,7 +2982,8 @@ pub fn check_tutorial_available(
     let mut actual_used_count = 0;
     let mut available_videos = Vec::new();
     for video_path in all_videos {
-        if used_cleaned.contains(&video_path) {
+        let video_path_str = video_path.to_string_lossy().to_string();
+        if used_cleaned.contains(&video_path_str) {
             actual_used_count += 1;
         } else {
             available_videos.push(video_path);
