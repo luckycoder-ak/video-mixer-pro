@@ -183,6 +183,7 @@ impl Task {
             current_video: 0,
             progress_steps: Vec::new(),
             logs: Vec::new(),
+            allocated_tutorial_videos: Vec::new(),
         }
     }
 }
@@ -1609,6 +1610,8 @@ fn process_single_mode(
     transition_duration: f32,
     // 任务级别共享的临时目录
     temp_dir: &PathBuf,
+    // 预分配的教程视频路径，如果为空则不使用教程视频
+    allocated_tutorial_video: Option<&str>,
 ) -> Result<(), String> {
     let (output_width, output_height) = calculate_video_dimensions(video_ratio);
     // 使用任务级别共享的临时目录，每个视频在其中创建独立子目录
@@ -1616,7 +1619,7 @@ fn process_single_mode(
     fs::create_dir_all(&video_temp_dir).map_err(|e| e.to_string())?;
 
     let mut segment_files: Vec<PathBuf> = Vec::new();
-    let mut first_segment_primary_video: Option<PathBuf> = None;
+    let mut _first_segment_primary_video: Option<PathBuf> = None;
 
     let time_points: Vec<f32> = template_segments.iter().map(|s| s.duration).collect();
     let mut segment_offsets = compute_segment_offsets(&time_points);
@@ -1677,7 +1680,7 @@ fn process_single_mode(
         let selected = select_random_videos(&videos, video_count, folder_used)
             .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
         if i == 0 {
-            first_segment_primary_video = selected.first().cloned();
+            _first_segment_primary_video = selected.first().cloned();
         }
         let source_folder_abs = std::fs::canonicalize(&segment.source_folder)
             .unwrap_or_else(|_| PathBuf::from(&segment.source_folder))
@@ -1739,7 +1742,9 @@ fn process_single_mode(
     }
 
     // 教程片段：必须配置文件夹；按配置去重，用过的素材永不再选；耗尽即报错。
-    if tutorial_folder.trim().is_empty() {
+    let mut temp_with_tutorial_path: Option<PathBuf> = None;
+    let mut original_tutorial_path: Option<PathBuf> = None;
+    if !tutorial_folder.trim().is_empty() {
         let err = "教程素材文件夹未配置".to_string();
         let tutorial_step_id = format!("video_{}__tutorial", video_index);
         push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
@@ -1759,7 +1764,7 @@ fn process_single_mode(
 
     // 从当前配置的已用集合里过滤出可用的教程素材，同时清理已不存在的视频
     let tutorial_video = {
-        let used_snapshot: HashSet<String> = tutorial_used_by_config
+        let _used_snapshot: HashSet<String> = tutorial_used_by_config
             .read()
             .ok()
             .and_then(|guard| guard.get(config_id).cloned())
@@ -1813,7 +1818,7 @@ fn process_single_mode(
     // 立即登记为已用（内存中），防止同配置后续视频重复选取，持久化留到任务保存时统一处理
     // 保存原始教程视频路径用于后续删除
     let tutorial_key = tutorial_video.to_string_lossy().to_string();
-    let original_tutorial_path = tutorial_video.clone();
+    original_tutorial_path = Some(tutorial_video.clone());
     {
         if let Ok(mut guard) = tutorial_used_by_config.write() {
             guard
