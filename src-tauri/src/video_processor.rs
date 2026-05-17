@@ -1741,149 +1741,72 @@ fn process_single_mode(
         segment_files.push(trimmed_segment);
     }
 
-    // 教程片段：必须配置文件夹；按配置去重，用过的素材永不再选；耗尽即报错。
+    // 教程片段：使用预分配的教程视频
     let mut temp_with_tutorial_path: Option<PathBuf> = None;
     let mut original_tutorial_path: Option<PathBuf> = None;
-    if !tutorial_folder.trim().is_empty() {
-        let err = "教程素材文件夹未配置".to_string();
+    if let Some(ref video_path) = allocated_tutorial_video {
         let tutorial_step_id = format!("video_{}__tutorial", video_index);
-        push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
-        return Err(err);
-    }
+        push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
 
-    let tutorial_videos = get_video_files(tutorial_folder)?;
-    if tutorial_videos.is_empty() {
-        let err = format!("教程素材文件夹为空: {}", tutorial_folder);
-        let tutorial_step_id = format!("video_{}__tutorial", video_index);
-        push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
-        return Err(err);
-    }
+        let tutorial_video = PathBuf::from(video_path);
 
-    let tutorial_step_id = format!("video_{}__tutorial", video_index);
-    push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Running, None);
-
-    // 从当前配置的已用集合里过滤出可用的教程素材，同时清理已不存在的视频
-    let tutorial_video = {
-        let _used_snapshot: HashSet<String> = tutorial_used_by_config
-            .read()
-            .ok()
-            .and_then(|guard| guard.get(config_id).cloned())
-            .unwrap_or_default();
-        
-        // 清理掉已不存在的视频
-        {
-            if let Ok(mut guard) = tutorial_used_by_config.write() {
-                if let Some(used_set) = guard.get_mut(config_id) {
-                    let mut to_remove = Vec::new();
-                    for used in used_set.iter() {
-                        let path = PathBuf::from(used);
-                        if !path.exists() {
-                            to_remove.push(used.clone());
-                        }
-                    }
-                    for remove in to_remove {
-                        used_set.remove(&remove);
-                    }
-                }
-            }
-        }
-        
-        // 重新获取清理后的 used 集合
-        let used_cleaned: HashSet<String> = tutorial_used_by_config
-            .read()
-            .ok()
-            .and_then(|guard| guard.get(config_id).cloned())
-            .unwrap_or_default();
-        
-        let available: Vec<PathBuf> = tutorial_videos
-            .iter()
-            .filter(|v| !used_cleaned.contains(&v.to_string_lossy().to_string()))
-            .cloned()
-            .collect();
-        
-        if available.is_empty() {
-            let err = format!(
-                "教程素材已全部使用过，请补充新素材到: {}（配置已用 {} 个）",
+        push_log(
+            tasks,
+            task_id,
+            LogLevel::Info,
+            video_index,
+            format!(
+                "教程片段从文件夹 {} 选中素材文件名：{}",
                 tutorial_folder,
-                used_cleaned.len()
-            );
-            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(err.clone()));
-            return Err(err);
+                tutorial_video.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+            ),
+        );
+        original_tutorial_path = Some(tutorial_video.clone());
+
+        let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
+
+        // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容（规范化色彩范围）
+        let tutorial_scale_filter = format!(
+            "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,setrange=tv",
+            output_width, output_height, output_width, output_height
+        );
+
+        let tutorial_scaled_str = tutorial_scaled.to_string_lossy().to_string();
+        let tutorial_input_str = tutorial_video.to_string_lossy().to_string();
+        let encoder = detect_best_encoder();
+        let num_cpus_str = num_cpus::get().to_string();
+
+        let mut tutorial_args: Vec<String> = vec![
+            "-hide_banner".to_string(),
+            "-loglevel".to_string(), "error".to_string(),
+        ];
+
+        // 如果启用转场效果，教程视频从转场时长秒数开始截取
+        if enable_transition {
+            tutorial_args.push("-ss".to_string());
+            tutorial_args.push(transition_duration.to_string());
         }
-        let mut rng = rand::thread_rng();
-        let idx = rng.gen_range(0..available.len());
-        available[idx].clone()
-    };
 
-    // 立即登记为已用（内存中），防止同配置后续视频重复选取，持久化留到任务保存时统一处理
-    // 保存原始教程视频路径用于后续删除
-    let tutorial_key = tutorial_video.to_string_lossy().to_string();
-    original_tutorial_path = Some(tutorial_video.clone());
-    {
-        if let Ok(mut guard) = tutorial_used_by_config.write() {
-            guard
-                .entry(config_id.to_string())
-                .or_insert_with(HashSet::new)
-                .insert(tutorial_key.clone());
-        }
-    }
-    push_log(
-        tasks,
-        task_id,
-        LogLevel::Info,
-        video_index,
-        format!(
-            "教程片段从文件夹 {} 选中素材文件名：{}",
-            std::fs::canonicalize(tutorial_folder)
-                .unwrap_or_else(|_| PathBuf::from(tutorial_folder))
-                .to_string_lossy(),
-            tutorial_video.file_name().and_then(|n| n.to_str()).unwrap_or_default()
-        ),
-    );
+        tutorial_args.extend(vec![
+            "-i".to_string(), tutorial_input_str,
+            "-vf".to_string(), tutorial_scale_filter,
+            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:a".to_string(), encoder.audio_codec.to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-threads".to_string(), num_cpus_str,
+            "-y".to_string(),
+            tutorial_scaled_str,
+        ]);
 
-    let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
-
-    // 教程片段：仅做格式对齐（setsar/fps/format），不做时间截取，保持完整原始内容（规范化色彩范围）
-    let tutorial_scale_filter = format!(
-        "scale={}:{}:force_original_aspect_ratio=decrease,pad={}:{}:(ow-iw)/2:(oh-ih)/2:black,setsar=sar=1,fps=30,format=yuv420p,setrange=tv",
-        output_width, output_height, output_width, output_height
-    );
-
-    let tutorial_scaled_str = tutorial_scaled.to_string_lossy().to_string();
-    let tutorial_input_str = tutorial_video.to_string_lossy().to_string();
-    let encoder = detect_best_encoder();
-    let num_cpus_str = num_cpus::get().to_string();
-
-    let mut tutorial_args: Vec<String> = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".to_string(), "error".to_string(),
-    ];
-
-    // 如果启用转场效果，教程视频从转场时长秒数开始截取
-    if enable_transition {
-        tutorial_args.push("-ss".to_string());
-        tutorial_args.push(transition_duration.to_string());
-    }
-
-    tutorial_args.extend(vec![
-        "-i".to_string(), tutorial_input_str,
-        "-vf".to_string(), tutorial_scale_filter,
-        "-c:v".to_string(), encoder.video_codec.to_string(),
-        "-c:a".to_string(), encoder.audio_codec.to_string(),
-        "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-threads".to_string(), num_cpus_str,
-        "-y".to_string(),
-        tutorial_scaled_str,
-    ]);
-
-    match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
-        Ok(()) => {
-            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Completed, None);
-            // 教程片段不加入segment_files参与转场，后续直接拼接
-        }
-        Err(e) => {
-            push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(e.clone()));
-            return Err(e);
+        match run_ffmpeg_with_cancel(task_id, cancel, &tutorial_args) {
+            Ok(()) => {
+                push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Completed, None);
+                // 教程片段不加入segment_files参与转场，后续直接拼接
+            }
+            Err(e) => {
+                push_step(tasks, task_id, &tutorial_step_id, &format!("视频{} - 处理教程片段", video_index), StepStatus::Error, Some(e.clone()));
+                return Err(e);
+            }
         }
     }
 
@@ -1976,7 +1899,7 @@ fn process_single_mode(
 
     // 处理模板片段和教程片段的合并（仅视频转场，音频稍后添加）
     let tutorial_scaled = video_temp_dir.join("tutorial_scaled.mp4");
-    if tutorial_scaled.exists() {
+    if allocated_tutorial_video.is_some() && tutorial_scaled.exists() {
         let concat_step_id = format!("video_{}__concat", video_index);
         
         if enable_transition {
