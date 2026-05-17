@@ -2156,27 +2156,29 @@ fn process_single_mode(
     }
 
     // 视频生成完成后自动删除原始教程视频文件
-    if original_tutorial_path.exists() {
-        match fs::remove_file(&original_tutorial_path) {
-            Ok(()) => {
-                info!("已删除原始教程视频: {:?}", original_tutorial_path);
-                push_log(
-                    tasks,
-                    task_id,
-                    LogLevel::Info,
-                    video_index,
-                    format!("已删除原始教程视频: {}", original_tutorial_path.file_name().and_then(|n| n.to_str()).unwrap_or_default()),
-                );
-            }
-            Err(e) => {
-                warn!("删除原始教程视频失败: {:?}, 错误: {}", original_tutorial_path, e);
-                push_log(
-                    tasks,
-                    task_id,
-                    LogLevel::Warn,
-                    video_index,
-                    format!("删除原始教程视频失败: {}", e),
-                );
+    if let Some(ref path) = original_tutorial_path {
+        if path.exists() {
+            match fs::remove_file(path) {
+                Ok(()) => {
+                    info!("已删除原始教程视频: {:?}", path);
+                    push_log(
+                        tasks,
+                        task_id,
+                        LogLevel::Info,
+                        video_index,
+                        format!("已删除原始教程视频: {}", path.file_name().and_then(|n| n.to_str()).unwrap_or_default()),
+                    );
+                }
+                Err(e) => {
+                    warn!("删除原始教程视频失败: {:?}, 错误: {}", path, e);
+                    push_log(
+                        tasks,
+                        task_id,
+                        LogLevel::Warn,
+                        video_index,
+                        format!("删除原始教程视频失败: {}", e),
+                    );
+                }
             }
         }
     }
@@ -3005,7 +3007,7 @@ pub fn check_tutorial_available(
         });
     }
     
-    let used_snapshot: HashSet<String> = state
+    let _used_snapshot: HashSet<String> = state
         .used_tutorial_videos
         .read()
         .map_err(|e| e.to_string())?
