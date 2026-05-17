@@ -2121,12 +2121,12 @@ fn process_single_mode(
         
         // 取最短时长作为最终输出时长
         let final_duration = if video_duration < actual_audio_duration {
-            info!("视频时长 {:.2}s < 音频时长 {:.2}s，将截断音频".format(video_duration, actual_audio_duration));
+            info!("视频时长 {:.2}s < 音频时长 {:.2}s，将截断音频", video_duration, actual_audio_duration);
             push_log(tasks, task_id, LogLevel::Info, video_index, 
                 format!("视频时长 {:.2}s < 音频时长 {:.2}s，将截断音频", video_duration, actual_audio_duration));
             video_duration
         } else {
-            info!("音频时长 {:.2}s <= 视频时长 {:.2}s，将截断视频".format(actual_audio_duration, video_duration));
+            info!("音频时长 {:.2}s <= 视频时长 {:.2}s，将截断视频", actual_audio_duration, video_duration);
             push_log(tasks, task_id, LogLevel::Info, video_index, 
                 format!("音频时长 {:.2}s <= 视频时长 {:.2}s，将截断视频", actual_audio_duration, video_duration));
             actual_audio_duration
