@@ -154,6 +154,9 @@ pub struct Task {
     pub progress_steps: Vec<TaskStep>,
     #[serde(default)]
     pub logs: Vec<LogEntry>,
+    /// 预分配的教程视频列表，保证任务执行时不会与其他任务冲突
+    #[serde(default)]
+    pub allocated_tutorial_videos: Vec<String>,
 }
 
 impl Task {
@@ -2402,8 +2405,46 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
     let config = config.ok_or_else(|| format!("配置 '{}' 不存在", config_name))?;
 
+    // 创建任务前先预分配教程视频，保证独占
+    let allocated_tutorial_videos = {
+        let mut used = state.used_tutorial_videos.write().map_err(|e| e.to_string())?;
+        let used_set = used.entry(config.id.clone()).or_insert_with(HashSet::new);
+
+        let all_videos = get_video_files(&config.tutorial_folder)?;
+        
+        // 筛选可用视频
+        let mut available_videos = Vec::new();
+        for video in all_videos {
+            let video_str = video.to_string_lossy().to_string();
+            if !used_set.contains(&video_str) {
+                available_videos.push(video_str);
+            }
+        }
+
+        if available_videos.len() < count {
+            return Err(format!(
+                "教程视频数量不足，当前可用 {} 个，需要 {} 个，请补充素材",
+                available_videos.len(),
+                count
+            ));
+        }
+
+        // 随机选择并标记为已使用
+        let mut rng = rand::thread_rng();
+        use rand::seq::SliceRandom;
+        available_videos.shuffle(&mut rng);
+        let selected = available_videos.into_iter().take(count).collect::<Vec<_>>();
+
+        for video in &selected {
+            used_set.insert(video.clone());
+        }
+
+        selected
+    };
+
     let mut task = Task::new(config_name.clone(), count);
     task.config_id = config.id.clone();
+    task.allocated_tutorial_videos = allocated_tutorial_videos;
 
     let task_output_dir = resolve_task_output_dir(
         &config.output_folder,
@@ -2558,44 +2599,60 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                     let output_filename = format!("{}_{}.mp4", config_clone.name, video_index);
 
                     // 为每个视频创建独立的临时子目录
-                    let video_temp_dir = task_temp_dir.join(format!("video_{}", video_index));
-                    if let Err(e) = fs::create_dir_all(&video_temp_dir) {
-                        error!("创建视频 {} 临时目录失败: {}", video_index, e);
-                        let mut failed = failed_videos.lock().unwrap();
-                        failed.push(format!("视频{}: 创建临时目录失败 - {}", video_index, e));
-                        let mut fail_count = failed_count.lock().unwrap();
-                        *fail_count += 1;
-                        push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 失败", video_index), StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
-                        continue;
+        let video_temp_dir = task_temp_dir.join(format!("video_{}", video_index));
+        if let Err(e) = fs::create_dir_all(&video_temp_dir) {
+            error!("创建视频 {} 临时目录失败: {}", video_index, e);
+            let mut failed = failed_videos.lock().unwrap();
+            failed.push(format!("视频{}: 创建临时目录失败 - {}", video_index, e));
+            let mut fail_count = failed_count.lock().unwrap();
+            *fail_count += 1;
+            push_step(&tasks_clone, &task_id, &video_step_id, &format!("视频{} - 失败", video_index), StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
+            continue;
+        }
+
+        // 获取预分配的教程视频
+        let allocated_tutorial_video = {
+            let tasks_guard = tasks_clone.read().unwrap();
+            tasks_guard
+                .iter()
+                .find(|t| t.id == task_id)
+                .and_then(|task| {
+                    if video_index - 1 < task.allocated_tutorial_videos.len() {
+                        Some(task.allocated_tutorial_videos[video_index - 1].clone())
+                    } else {
+                        None
                     }
+                })
+        };
 
-                    // 获取used_per_folder的锁
-                    let used_per_folder_guard = used_per_folder.lock().unwrap();
-                    let mut local_used_per_folder = used_per_folder_guard.clone();
-                    drop(used_per_folder_guard);
+        // 获取used_per_folder的锁
+        let used_per_folder_guard = used_per_folder.lock().unwrap();
+        let mut local_used_per_folder = used_per_folder_guard.clone();
+        drop(used_per_folder_guard);
 
-                    let result = process_single_mode(
-                        &task_id,
-                        &cancel_flag,
-                        &tasks_clone,
-                        video_index,
-                        &config_clone.template_segments,
-                        &config_clone.tutorial_folder,
-                        &config_clone.video_ratio,
-                        &config_clone.audio_path,
-                        config_clone.audio_duration,
-                        &config_clone.subtitle_path,
-                        &output_dir,
-                        &output_filename,
-                        &mut local_used_per_folder,
-                        &tutorial_used_by_config,
-                        &config_clone.id,
-                        &app_data_file,
-                        &config_clone.root_folder,
-                        config_clone.enable_transition,
-                        config_clone.transition_duration,
-                        &video_temp_dir,
-                    );
+        let result = process_single_mode(
+            &task_id,
+            &cancel_flag,
+            &tasks_clone,
+            video_index,
+            &config_clone.template_segments,
+            &config_clone.tutorial_folder,
+            &config_clone.video_ratio,
+            &config_clone.audio_path,
+            config_clone.audio_duration,
+            &config_clone.subtitle_path,
+            &output_dir,
+            &output_filename,
+            &mut local_used_per_folder,
+            &tutorial_used_by_config,
+            &config_clone.id,
+            &app_data_file,
+            &config_clone.root_folder,
+            config_clone.enable_transition,
+            config_clone.transition_duration,
+            &video_temp_dir,
+            allocated_tutorial_video.as_deref(),
+        );
 
                     // 合并used_per_folder的更新
                     let mut used_per_folder_guard = used_per_folder.lock().unwrap();
