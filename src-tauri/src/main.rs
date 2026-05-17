@@ -94,6 +94,7 @@ fn main() {
             video_processor::retry_task,
             video_processor::delete_task,
             video_processor::open_folder,
+            video_processor::check_tutorial_available,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

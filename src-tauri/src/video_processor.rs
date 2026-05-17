@@ -1781,7 +1781,9 @@ fn process_single_mode(
     };
 
     // 立即登记为已用（内存中），防止同配置后续视频重复选取，持久化留到任务保存时统一处理
+    // 保存原始教程视频路径用于后续删除
     let tutorial_key = tutorial_video.to_string_lossy().to_string();
+    let original_tutorial_path = tutorial_video.clone();
     {
         if let Ok(mut guard) = tutorial_used_by_config.write() {
             guard
@@ -2102,31 +2104,51 @@ fn process_single_mode(
         }
     }
 
-    // 添加音频
+    // 音频处理：直接按最短长度截断，不做素材补充
+    // 若视频比音频长，截断视频；若音频比视频长，截断音频
     if !audio_path.is_empty() {
         let audio_step_id = format!("video_{}__audio", video_index);
         push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Running, None);
 
+        let actual_audio_duration = probe_video_duration(audio_path)
+            .unwrap_or_else(|e| {
+                info!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e);
+                push_log(tasks, task_id, LogLevel::Warn, video_index, format!("ffprobe 音频时长失败，回退使用配置值 {:.2}s: {}", audio_duration, e));
+                audio_duration
+            });
+        
+        let video_duration = probe_video_duration(&temp_with_tutorial_path.to_string_lossy())?;
+        
+        // 取最短时长作为最终输出时长
+        let final_duration = if video_duration < actual_audio_duration {
+            info!("视频时长 {:.2}s < 音频时长 {:.2}s，将截断音频".format(video_duration, actual_audio_duration));
+            push_log(tasks, task_id, LogLevel::Info, video_index, 
+                format!("视频时长 {:.2}s < 音频时长 {:.2}s，将截断音频", video_duration, actual_audio_duration));
+            video_duration
+        } else {
+            info!("音频时长 {:.2}s <= 视频时长 {:.2}s，将截断视频".format(actual_audio_duration, video_duration));
+            push_log(tasks, task_id, LogLevel::Info, video_index, 
+                format!("音频时长 {:.2}s <= 视频时长 {:.2}s，将截断视频", actual_audio_duration, video_duration));
+            actual_audio_duration
+        };
+
         let encoder = detect_best_encoder();
         let num_cpus_str = num_cpus::get().to_string();
-        // 使用不同的临时文件作为输出，避免输入输出相同
         let temp_with_audio_path = video_temp_dir.join("temp_with_audio.mp4");
+        let final_duration_str = final_duration.to_string();
 
-        // 关键：使用 -shortest 让输出时长对齐到最短流（音频），
-        // 解决"视频总时长 > 音频时长"时尾部静音、最终时长被视频拉长的 BUG。
-        // 视频流改为 copy，避免对已编码视频做无意义的二次编码（仅音频需要重新编码）。
         let args: Vec<String> = vec![
             "-hide_banner".to_string(),
             "-loglevel".to_string(), "error".to_string(),
             "-i".to_string(), temp_with_tutorial_path.to_string_lossy().to_string(),
             "-i".to_string(), audio_path.to_string(),
             "-filter_complex".to_string(),
-            "[1:a]volume=0.8[a]".to_string(),
+            format!("[1:a]volume=0.8,atrim=start=0:duration={}[a]", final_duration_str),
             "-map".to_string(), "0:v".to_string(),
             "-map".to_string(), "[a]".to_string(),
             "-c:v".to_string(), "copy".to_string(),
             "-c:a".to_string(), encoder.audio_codec.to_string(),
-            "-shortest".to_string(),
+            "-t".to_string(), final_duration_str,
             "-movflags".to_string(), "+faststart".to_string(),
             "-threads".to_string(), num_cpus_str,
             "-y".to_string(),
@@ -2136,7 +2158,6 @@ fn process_single_mode(
         match run_ffmpeg_with_cancel(task_id, cancel, &args) {
             Ok(()) => {
                 push_step(tasks, task_id, &audio_step_id, &format!("视频{} - 添加音频", video_index), StepStatus::Completed, None);
-                // 将添加音频后的文件复制回 temp_with_tutorial_path
                 fs::copy(&temp_with_audio_path, &temp_with_tutorial_path)
                     .map_err(|e| format!("复制音频处理后的文件失败: {}", e))?;
             }
@@ -2160,6 +2181,32 @@ fn process_single_mode(
     } else {
         fs::copy(&temp_with_tutorial_path, &output_path)
             .map_err(|e| format!("复制视频文件失败: {}", e))?;
+    }
+
+    // 视频生成完成后自动删除原始教程视频文件
+    if original_tutorial_path.exists() {
+        match fs::remove_file(&original_tutorial_path) {
+            Ok(()) => {
+                info!("已删除原始教程视频: {:?}", original_tutorial_path);
+                push_log(
+                    tasks,
+                    task_id,
+                    LogLevel::Info,
+                    video_index,
+                    format!("已删除原始教程视频: {}", original_tutorial_path.file_name().and_then(|n| n.to_str()).unwrap_or_default()),
+                );
+            }
+            Err(e) => {
+                warn!("删除原始教程视频失败: {:?}, 错误: {}", original_tutorial_path, e);
+                push_log(
+                    tasks,
+                    task_id,
+                    LogLevel::Warn,
+                    video_index,
+                    format!("删除原始教程视频失败: {}", e),
+                );
+            }
+        }
     }
 
     Ok(())
@@ -2893,6 +2940,67 @@ pub fn get_task_status(state: tauri::State<AppState>, id: String) -> Result<Task
         Some(task) => Ok(task.status.clone()),
         None => Err(format!("任务 {} 不存在", id)),
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCheckResult {
+    pub has_available: bool,
+    pub total_count: usize,
+    pub used_count: usize,
+    pub available_count: usize,
+}
+
+#[tauri::command]
+pub fn check_tutorial_available(
+    state: tauri::State<AppState>,
+    config_id: String,
+    tutorial_folder: String,
+) -> Result<TutorialCheckResult, String> {
+    info!("检查教程文件夹可用性: config_id={}, folder={}", config_id, tutorial_folder);
+    
+    if tutorial_folder.trim().is_empty() {
+        return Err("教程文件夹未配置".to_string());
+    }
+    
+    let path = std::path::PathBuf::from(&tutorial_folder);
+    if !path.exists() || !path.is_dir() {
+        return Err(format!("教程文件夹不存在: {}", tutorial_folder));
+    }
+    
+    let all_videos = get_video_files(&tutorial_folder)?;
+    let total_count = all_videos.len();
+    
+    if total_count == 0 {
+        return Ok(TutorialCheckResult {
+            has_available: false,
+            total_count: 0,
+            used_count: 0,
+            available_count: 0,
+        });
+    }
+    
+    let used_snapshot: HashSet<String> = state
+        .used_tutorial_videos
+        .read()
+        .map_err(|e| e.to_string())?
+        .get(&config_id)
+        .cloned()
+        .unwrap_or_default();
+    
+    let used_count = used_snapshot.len();
+    let available_count = total_count.saturating_sub(used_count);
+    
+    let result = TutorialCheckResult {
+        has_available: available_count > 0,
+        total_count,
+        used_count,
+        available_count,
+    };
+    
+    info!("教程检查结果: 总数={}, 已用={}, 可用={}", 
+        result.total_count, result.used_count, result.available_count);
+    
+    Ok(result)
 }
 
 #[tauri::command]

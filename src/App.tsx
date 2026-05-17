@@ -86,6 +86,28 @@ function App() {
 
   const handleGenerate = async (config: VideoConfig, count: number) => {
     try {
+      // 检查教程文件夹是否有可用视频
+      const checkResult = await invoke<{
+        has_available: boolean;
+        total_count: number;
+        used_count: number;
+        available_count: number;
+      }>('check_tutorial_available', {
+        configId: config.id,
+        tutorialFolder: config.tutorial_folder,
+      });
+      
+      if (!checkResult.has_available) {
+        setShowGenerateModal(false);
+        setGeneratingConfig(null);
+        if (checkResult.total_count === 0) {
+          showNotification('无法创建任务', '教程文件夹为空，请先添加教程视频文件');
+        } else {
+          showNotification('无法创建任务', `教程视频已全部使用（已用 ${checkResult.used_count} 个），请补充新素材到教程文件夹`);
+        }
+        return;
+      }
+      
       const newTask = await invoke<Task>('create_task', { configName: config.name, count });
       const newTasks = [...tasks, newTask];
       setTasks(newTasks);
@@ -95,6 +117,8 @@ function App() {
       setActiveTab('tasks');
       showNotification('任务已创建', `正在为"${config.name}"生成 ${count} 个视频`);
     } catch (error) {
+      setShowGenerateModal(false);
+      setGeneratingConfig(null);
       showNotification('创建失败', String(error));
     }
   };
