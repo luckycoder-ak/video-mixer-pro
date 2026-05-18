@@ -1145,6 +1145,8 @@ fn process_quadrant_mode_optimized(
     duration: f32,
     _temp_dir: &PathBuf,
 ) -> Result<(), String> {
+    let half_width = output_width / 2;
+    let half_height = output_height / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
@@ -1159,32 +1161,21 @@ fn process_quadrant_mode_optimized(
     // 合并为单次 ffmpeg 调用，避免 NVENC 中间文件空流导致 merge 阶段 "matches no streams"。
     // 关键：filter 链最前置 setparams=range=tv 强制规范化色彩范围元数据，
     // 防止上游素材 color_range 异常触发 NVENC reinit 失败。
-    // 使用 exact 模式的 hstack/vstack 确保严格按照输入尺寸拼接，避免自动填充黑边
     let mut cell_chains: Vec<String> = Vec::with_capacity(4);
     for i in 0..4 {
         cell_chains.push(format!(
-            "[{i}:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={ow}:{oh},setsar=sar=1,fps=30,format=yuv420p,setrange=tv[c{i}]",
+            "[{i}:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,scale={hw}:{hh}:force_original_aspect_ratio=increase,crop={hw}:{hh},setsar=sar=1,fps=30,format=yuv420p,setrange=tv[c{i}]",
             i = i,
             start = start_offset,
             dur = duration,
-            ow = output_width,
-            oh = output_height,
+            hw = half_width,
+            hh = half_height,
         ));
     }
 
-    // 使用 pad 确保四个单元格精确对齐到四分之一区域，避免 hstack/vstack 自动添加黑边
     let filter_complex = format!(
-        "{};\
-         [c0]crop={w}:{h}:0:0[tl];\
-         [c1]crop={w}:{h}:{w}:0[tr];\
-         [c2]crop={w}:{h}:0:{h}[bl];\
-         [c3]crop={w}:{h}:{w}:{h}[br];\
-         [tl][tr]hstack=inputs=2:shortest=1[top];\
-         [bl][br]hstack=inputs=2:shortest=1[bottom];\
-         [top][bottom]vstack=inputs=2:shortest=1[out]",
-        cell_chains.join(";"),
-        w = output_width / 2,
-        h = output_height / 2,
+        "{};[c0][c1]hstack=inputs=2:shortest=1[top];[c2][c3]hstack=inputs=2:shortest=1[bottom];[top][bottom]vstack=inputs=2:shortest=1[out]",
+        cell_chains.join(";")
     );
 
     let args: Vec<String> = vec![
