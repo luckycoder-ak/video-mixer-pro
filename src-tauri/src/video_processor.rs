@@ -2186,17 +2186,9 @@ fn escape_drawtext_text(text: &str) -> String {
 
 fn escape_font_path(font_path: &str) -> String {
     // 转义字体路径，适配 Windows 和 Unix 系统
-    // FFmpeg 的 drawtext 滤镜中，字体路径需要特殊处理
-    #[cfg(target_os = "windows")]
-    {
-        // Windows 路径：需要转义反斜杠，并且对于带空格的路径，用单引号包裹
-        font_path.replace('\\', "\\\\").replace('\'', "\\'")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Unix-like 路径
-        font_path.replace('\'', "\\'")
-    }
+    // FFmpeg 的 drawtext 滤镜中，字体路径用单引号包裹
+    // 需要转义单引号，Windows 路径中的反斜杠在单引号内不需要额外转义
+    font_path.replace('\'', "\\'")
 }
 
 fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> String {
@@ -2221,10 +2213,15 @@ fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> Strin
 fn get_default_font_path() -> &'static str {
     #[cfg(target_os = "windows")]
     {
-        // Windows 默认字体路径 - 使用微软雅黑或Arial
+        // Windows 默认字体路径 - 支持多种中文字体和英文字体
         let possible_paths = [
-            "C:\\Windows\\Fonts\\msyh.ttc", // 微软雅黑
-            "C:\\Windows\\Fonts\\arial.ttf", // Arial
+            "C:\\Windows\\Fonts\\msyh.ttc",       // 微软雅黑 (Windows 7+)
+            "C:\\Windows\\Fonts\\msyhbd.ttc",    // 微软雅黑粗体
+            "C:\\Windows\\Fonts\\simhei.ttf",   // 黑体
+            "C:\\Windows\\Fonts\\simsun.ttc",   // 宋体
+            "C:\\Windows\\Fonts\\arial.ttf",    // Arial
+            "C:\\Windows\\Fonts\\segoeui.ttf",  // Segoe UI (Windows 10+)
+            "C:\\Windows\\Fonts\\calibri.ttf",  // Calibri
         ];
         for &path in &possible_paths {
             if std::path::Path::new(path).exists() {
@@ -2235,10 +2232,15 @@ fn get_default_font_path() -> &'static str {
     }
     #[cfg(target_os = "macos")]
     {
-        // macOS 默认字体路径
+        // macOS 默认字体路径 - 支持多种中文字体和系统字体
         let possible_paths = [
-            "/System/Library/Fonts/STHeiti Light.ttc", // 华文黑体
-            "/System/Library/Fonts/Arial.ttf", // Arial
+            "/System/Library/Fonts/STHeiti Light.ttc",     // 华文黑体
+            "/System/Library/Fonts/STHeiti Medium.ttc",    // 华文黑体中等
+            "/System/Library/Fonts/PingFang.ttc",          // 苹方
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",  // 冬青黑体
+            "/Library/Fonts/Arial.ttf",                    // Arial
+            "/System/Library/Fonts/Helvetica.ttc",         // Helvetica
+            "/System/Library/Fonts/SanFrancisco.ttc",      // San Francisco
         ];
         for &path in &possible_paths {
             if std::path::Path::new(path).exists() {
@@ -2247,7 +2249,7 @@ fn get_default_font_path() -> &'static str {
         }
         "/System/Library/Fonts/STHeiti Light.ttc" // 回退
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         // Linux 或其他系统
         let possible_paths = [
@@ -2265,15 +2267,16 @@ fn get_default_font_path() -> &'static str {
 
 fn escape_ffmpeg_path(path: &str) -> String {
     // 路径转义适配不同平台
+    // FFmpeg 的 subtitles/ass 滤镜在不同平台对路径的处理不同
     #[cfg(target_os = "windows")]
     {
-        // Windows 路径转义
-        // FFmpeg 的 subtitles 滤镜在 Windows 上接受常规路径，只需转义反斜杠
-        path.replace('\\', "\\\\")
+        // Windows 路径转义：subtitles 滤镜在 Windows 上需要双反斜杠或正斜杠
+        // 使用正斜杠更可靠，因为 FFmpeg 内部通常使用正斜杠处理路径
+        path.replace('\\', "/")
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // Unix-like 系统路径转义
+        // Unix-like 系统路径转义：需要转义冒号和反斜杠
         path.replace('\\', "\\\\").replace(":", "\\:")
     }
 }
@@ -2344,10 +2347,6 @@ fn add_subtitles(
         }
         Err(e) => {
             error!("subtitles/ass 滤镜失败: {}", e);
-            #[cfg(target_os = "macos")]
-            {
-                warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
-            }
         }
     }
 
@@ -2378,6 +2377,9 @@ fn add_subtitles(
 
     let fontfile = get_default_font_path();
     info!("使用字体路径: {}", fontfile);
+    if !std::path::Path::new(fontfile).exists() {
+        warn!("字体文件不存在: {}，尝试使用系统默认字体", fontfile);
+    }
     let drawtext_filter = build_drawtext_subtitle_filter(&entries, fontfile);
 
     info!("drawtext 滤镜已构建，共 {} 条字幕", entries.len());
@@ -2402,7 +2404,14 @@ fn add_subtitles(
         }
         Err(e) => {
             error!("drawtext 字幕方案失败: {}", e);
-            warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
+            #[cfg(target_os = "macos")]
+            {
+                warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
+            }
+            #[cfg(target_os = "windows")]
+            {
+                warn!("提示：若需要字幕支持，请确保 FFmpeg 包含 drawtext 滤镜支持");
+            }
             fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
             Ok(())
         }
