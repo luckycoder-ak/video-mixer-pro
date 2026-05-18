@@ -2186,9 +2186,17 @@ fn escape_drawtext_text(text: &str) -> String {
 
 fn escape_font_path(font_path: &str) -> String {
     // 转义字体路径，适配 Windows 和 Unix 系统
-    // FFmpeg 的 drawtext 滤镜中，字体路径用单引号包裹
-    // 需要转义单引号，Windows 路径中的反斜杠在单引号内不需要额外转义
-    font_path.replace('\'', "\\'")
+    // drawtext 滤镜中字体路径需要特殊处理
+    #[cfg(target_os = "windows")]
+    {
+        // Windows：先转义单引号，再将反斜杠转为正斜杠
+        font_path.replace('\'', "\\'").replace('\\', "/")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix-like：只转义单引号
+        font_path.replace('\'', "\\'")
+    }
 }
 
 fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> String {
@@ -2200,8 +2208,17 @@ fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> Strin
         let start = entry.start_secs;
         let end = entry.end_secs;
 
+        // 字幕参数优化：
+        // - fontsize=36: 适合大多数视频的字体大小
+        // - fontcolor=white: 白色字体
+        // - borderw=3: 黑色描边，让字幕更清晰
+        // - bordercolor=black: 描边颜色
+        // - x=(w-tw)/2: 水平居中
+        // - y=h-th-100: 底部往上100像素，给多行字幕留空间
+        // - line_spacing=8: 行间距
+        // - enable='between(t,{},{})': 在指定时间段显示
         let drawtext = format!(
-            "drawtext=fontfile='{}':text='{}':fontsize=28:fontcolor=white@0.92:borderw=2.5:bordercolor=black@0.55:line_spacing=6:x=(w-tw)/2:y=h-th-80:enable='between(t,{},{})'",
+            "drawtext=fontfile='{}':text='{}':fontsize=36:fontcolor=white:borderw=3:bordercolor=black:x=(w-tw)/2:y=h-th-100:line_spacing=8:enable='between(t,{},{})'",
             escaped_font_path, escaped_text, start, end
         );
         parts.push(drawtext);
@@ -2289,7 +2306,8 @@ static BUNDLED_FONT_DATA: &[u8] = include_bytes!("../resources/NotoSansCJKsc-Reg
 
 fn get_bundled_font_path() -> std::io::Result<PathBuf> {
     let temp_dir = std::env::temp_dir();
-    let font_temp_path = temp_dir.join(format!("vmix_pro_font_{}.otf", Uuid::new_v4()));
+    // 使用 .ttf 扩展名，FFmpeg drawtext 对 ttf 格式支持最好
+    let font_temp_path = temp_dir.join(format!("vmix_pro_font_{}.ttf", Uuid::new_v4()));
     
     // 如果临时字体文件不存在，写入字体数据
     if !font_temp_path.exists() {
