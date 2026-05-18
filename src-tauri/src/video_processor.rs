@@ -2065,8 +2065,10 @@ fn process_single_mode(
     if !subtitle_path.is_empty() {
         let sub_step_id = format!("video_{}__subtitle", video_index);
         push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Running, None);
+        push_log(tasks, task_id, LogLevel::Info, video_index, format!("开始添加字幕: {}", subtitle_path));
         match add_subtitles(task_id, cancel, &temp_with_tutorial_path, subtitle_path, &output_path) {
             Ok(()) => {
+                push_log(tasks, task_id, LogLevel::Info, video_index, format!("字幕添加成功: {}", output_path.file_name().and_then(|n| n.to_str()).unwrap_or_default()));
                 push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None);
             }
             Err(e) => {
