@@ -2257,20 +2257,26 @@ fn add_subtitles(
 
     // subtitles/ass 滤镜不可用，回退到 drawtext 方案
     if is_ass_format {
-        let error_msg = "ASS 字幕回退到 drawtext 方案不支持".to_string();
-        error!("{}", error_msg);
+        warn!("ASS 字幕回退到 drawtext 方案不支持，跳过字幕");
         fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-        return Err(error_msg);
+        return Ok(());
     }
 
     info!("尝试 drawtext 字幕方案");
-    let srt_content = fs::read_to_string(subtitle_path).map_err(|e| format!("读取字幕文件失败: {}", e))?;
+    let srt_content = match fs::read_to_string(subtitle_path) {
+        Ok(c) => c,
+        Err(e) => {
+            error!("读取字幕文件失败: {}", e);
+            fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
+            return Ok(());
+        }
+    };
     let entries = match parse_srt_content(&srt_content) {
         Ok(e) => e,
         Err(e) => {
             error!("SRT 解析失败: {}", e);
             fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-            return Err(e);
+            return Ok(());
         }
     };
 
@@ -2298,11 +2304,10 @@ fn add_subtitles(
             Ok(())
         }
         Err(e) => {
-            let error_msg = format!("字幕添加失败: {}", e);
-            error!("{}", error_msg);
+            error!("drawtext 字幕方案失败: {}", e);
             warn!("提示：若需要字幕支持，请使用 Homebrew 安装完整版本的 FFmpeg：brew install ffmpeg-full");
             fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-            Err(error_msg)
+            Ok(())
         }
     }
 }
