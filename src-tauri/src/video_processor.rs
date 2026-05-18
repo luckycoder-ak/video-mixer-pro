@@ -1145,8 +1145,10 @@ fn process_quadrant_mode_optimized(
     duration: f32,
     _temp_dir: &PathBuf,
 ) -> Result<(), String> {
-    let half_width = output_width / 2;
-    let half_height = output_height / 2;
+    // 为了避免奇数尺寸导致的拼接黑边，我们先处理成稍大一点的尺寸
+    // 比如向上取整到偶数，最后再裁剪到目标尺寸
+    let half_width = (output_width + 1) / 2;
+    let half_height = (output_height + 1) / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
@@ -1173,9 +1175,16 @@ fn process_quadrant_mode_optimized(
         ));
     }
 
+    // 拼接完四个视频后，再统一裁剪到目标尺寸
     let filter_complex = format!(
-        "{};[c0][c1]hstack=inputs=2:shortest=1[top];[c2][c3]hstack=inputs=2:shortest=1[bottom];[top][bottom]vstack=inputs=2:shortest=1[out]",
-        cell_chains.join(";")
+        "{};\
+         [c0][c1]hstack=inputs=2:shortest=1[top];\
+         [c2][c3]hstack=inputs=2:shortest=1[bottom];\
+         [top][bottom]vstack=inputs=2:shortest=1[tmp];\
+         [tmp]crop={ow}:{oh}:0:0[out]",
+        cell_chains.join(";"),
+        ow = output_width,
+        oh = output_height,
     );
 
     let args: Vec<String> = vec![
