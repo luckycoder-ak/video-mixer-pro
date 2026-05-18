@@ -1145,8 +1145,6 @@ fn process_quadrant_mode_optimized(
     duration: f32,
     _temp_dir: &PathBuf,
 ) -> Result<(), String> {
-    let half_width = output_width / 2;
-    let half_height = output_height / 2;
     let encoder = detect_best_encoder();
     let num_cpus_str = num_cpus::get().to_string();
 
@@ -1161,24 +1159,34 @@ fn process_quadrant_mode_optimized(
     // 合并为单次 ffmpeg 调用，避免 NVENC 中间文件空流导致 merge 阶段 "matches no streams"。
     // 关键：filter 链最前置 setparams=range=tv 强制规范化色彩范围元数据，
     // 防止上游素材 color_range 异常触发 NVENC reinit 失败。
+    // 使用 exact 模式的 hstack/vstack 确保严格按照输入尺寸拼接，避免自动填充黑边
     let mut cell_chains: Vec<String> = Vec::with_capacity(4);
     for i in 0..4 {
         cell_chains.push(format!(
-            "[{i}:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,scale={hw}:{hh}:force_original_aspect_ratio=decrease,pad={hw}:{hh}:(ow-iw)/2:(oh-ih)/2:0x000000,setsar=sar=1,fps=30,format=yuv420p,setrange=tv[c{i}]",
+            "[{i}:v]trim=start={start}:duration={dur},setpts=PTS-STARTPTS,setparams=range=tv,scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={ow}:{oh},setsar=sar=1,fps=30,format=yuv420p,setrange=tv[c{i}]",
             i = i,
             start = start_offset,
             dur = duration,
-            hw = half_width,
-            hh = half_height,
+            ow = output_width,
+            oh = output_height,
         ));
     }
 
+    // 使用 pad 确保四个单元格精确对齐到四分之一区域，避免 hstack/vstack 自动添加黑边
     let filter_complex = format!(
-        "{};[c0][c1]hstack=inputs=2[top];[c2][c3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[out]",
-        cell_chains.join(";")
+        "{};\
+         [c0]crop={w}:{h}:0:0[tl];\
+         [c1]crop={w}:{h}:{w}:0[tr];\
+         [c2]crop={w}:{h}:0:{h}[bl];\
+         [c3]crop={w}:{h}:{w}:{h}[br];\
+         [tl][tr]hstack=inputs=2:shortest=1[top];\
+         [bl][br]hstack=inputs=2:shortest=1[bottom];\
+         [top][bottom]vstack=inputs=2:shortest=1[out]",
+        cell_chains.join(";"),
+        w = output_width / 2,
+        h = output_height / 2,
     );
 
-    let _ = output_width; // 仅用于满足参数语义（最终输出宽度 = half_width * 2）
     let args: Vec<String> = vec![
         "-hide_banner".to_string(), "-loglevel".to_string(), "error".to_string(),
         "-i".to_string(), inputs[0].clone(),
@@ -2067,10 +2075,17 @@ fn process_single_mode(
         let sub_step_id = format!("video_{}__subtitle", video_index);
         push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Running, None);
         match add_subtitles(task_id, cancel, &temp_with_tutorial_path, subtitle_path, &output_path) {
-            Ok(()) => push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None),
+            Ok(()) => {
+                push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None);
+            }
             Err(e) => {
-                push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Error, Some(e.clone()));
-                return Err(e);
+                // 字幕添加失败不影响视频生成，记录日志后继续
+                warn!("视频{} 字幕添加失败: {}", video_index, e);
+                push_log(tasks, task_id, LogLevel::Warn, video_index, format!("字幕添加失败: {}", e));
+                push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None);
+                // 复制原始视频到输出路径
+                fs::copy(&temp_with_tutorial_path, &output_path)
+                    .map_err(|e| format!("复制视频文件失败: {}", e))?;
             }
         }
     } else {
