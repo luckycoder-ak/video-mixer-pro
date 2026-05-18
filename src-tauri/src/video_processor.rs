@@ -2285,22 +2285,19 @@ fn escape_ffmpeg_path(path: &str) -> String {
     }
 }
 
+static BUNDLED_FONT_DATA: &[u8] = include_bytes!("../resources/NotoSansCJKsc-Regular.otf");
+
 fn get_bundled_font_path() -> std::io::Result<PathBuf> {
     let temp_dir = std::env::temp_dir();
-    let font_temp_path = temp_dir.join(format!("vmix_pro_font_{}.ttf", Uuid::new_v4()));
+    let font_temp_path = temp_dir.join(format!("vmix_pro_font_{}.otf", Uuid::new_v4()));
     
-    // 如果应用资源中有字体文件，从那里提取
-    // 这里暂时使用系统字体作为替代方案
-    let system_font = get_default_font_path();
-    
-    // 如果系统字体不存在，尝试查找其他字体
-    if !std::path::Path::new(system_font).exists() {
-        // 返回临时路径，表示我们使用默认方案（稍后需要实际内嵌字体）
-        // 暂时使用系统字体
-        Ok(PathBuf::from(system_font))
-    } else {
-        Ok(PathBuf::from(system_font))
+    // 如果临时字体文件不存在，写入字体数据
+    if !font_temp_path.exists() {
+        std::fs::write(&font_temp_path, BUNDLED_FONT_DATA)?;
+        info!("已提取内置字体到: {:?}", font_temp_path);
     }
+    
+    Ok(font_temp_path)
 }
 
 fn add_subtitles(
