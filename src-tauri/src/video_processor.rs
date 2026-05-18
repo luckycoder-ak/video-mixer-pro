@@ -2270,9 +2270,13 @@ fn escape_ffmpeg_path(path: &str) -> String {
     // FFmpeg 的 subtitles/ass 滤镜在不同平台对路径的处理不同
     #[cfg(target_os = "windows")]
     {
-        // Windows 路径转义：subtitles 滤镜在 Windows 上需要双反斜杠或正斜杠
-        // 使用正斜杠更可靠，因为 FFmpeg 内部通常使用正斜杠处理路径
-        path.replace('\\', "/")
+        // Windows 路径转义：subtitles 滤镜在 Windows 上有几种处理方式
+        // 1. 使用正斜杠
+        // 2. 转义冒号（因为冒号是滤镜参数分隔符）
+        let mut result = path.replace('\\', "/");
+        // 转义冒号（用于 subtitles 滤镜的路径参数）
+        result = result.replace(':', "\\:");
+        result
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -2317,36 +2321,92 @@ fn add_subtitles(
     let is_ass_format = subtitle_ext == "ass" || subtitle_ext == "ssa";
 
     let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
-    let escaped_path = escape_ffmpeg_path(&temp_subtitle_str);
-    let filter_str = if is_ass_format {
-        format!("ass=filename={}", escaped_path)
-    } else {
-        format!("subtitles=filename={}:si=0", escaped_path)
+    
+    // 记录路径信息用于调试
+    info!("原始字幕路径: {}", temp_subtitle_str);
+    
+    // 在 Windows 上尝试多种不同的路径格式
+    #[cfg(target_os = "windows")]
+    let filter_strs = {
+        let mut filters = Vec::new();
+        
+        // 方案1：冒号转义 + 正斜杠
+        let escaped_path1 = escape_ffmpeg_path(&temp_subtitle_str);
+        filters.push(if is_ass_format {
+            format!("ass=filename={}", escaped_path1)
+        } else {
+            format!("subtitles=filename={}:si=0", escaped_path1)
+        });
+        
+        // 方案2：不转义冒号，只转义反斜杠
+        let path2 = temp_subtitle_str.replace('\\', "\\\\");
+        filters.push(if is_ass_format {
+            format!("ass=filename='{}'", path2)
+        } else {
+            format!("subtitles=filename='{}':si=0", path2)
+        });
+        
+        // 方案3：正斜杠但不转义冒号，用单引号包裹
+        let path3 = temp_subtitle_str.replace('\\', "/");
+        filters.push(if is_ass_format {
+            format!("ass=filename='{}'", path3)
+        } else {
+            format!("subtitles=filename='{}':si=0", path3)
+        });
+        
+        // 方案4：drawtext 方案作为最后的回退（避免在 Windows 上一直失败）
+        filters
     };
-
-    let args: Vec<String> = vec![
-        "-hide_banner".to_string(),
-        "-loglevel".to_string(), "error".to_string(),
-        "-i".to_string(), input_str.clone(),
-        "-vf".to_string(), filter_str,
-        "-c:v".to_string(), encoder.video_codec.to_string(),
-        "-c:a".to_string(), "copy".to_string(),
-        "-pix_fmt".to_string(), "yuv420p".to_string(),
-        "-movflags".to_string(), "+faststart".to_string(),
-        "-y".to_string(),
-        output_str.clone(),
-    ];
-
-    let result = run_ffmpeg_with_cancel(task_id, cancel, &args);
+    
+    #[cfg(not(target_os = "windows"))]
+    let filter_strs = {
+        let escaped_path = escape_ffmpeg_path(&temp_subtitle_str);
+        vec![if is_ass_format {
+            format!("ass=filename={}", escaped_path)
+        } else {
+            format!("subtitles=filename={}:si=0", escaped_path)
+        }]
+    };
+    
+    info!("尝试 {} 种字幕滤镜方案", filter_strs.len());
+    
+    let mut result: Result<(), String> = Err("未尝试任何方案".to_string());
+    
+    for (i, filter_str) in filter_strs.iter().enumerate() {
+        info!("尝试方案 {}: {}", i + 1, filter_str);
+        
+        let args: Vec<String> = vec![
+            "-hide_banner".to_string(),
+            "-loglevel".to_string(), "info".to_string(), // 增加日志级别以便调试
+            "-i".to_string(), input_str.clone(),
+            "-vf".to_string(), filter_str.clone(),
+            "-c:v".to_string(), encoder.video_codec.to_string(),
+            "-c:a".to_string(), "copy".to_string(),
+            "-pix_fmt".to_string(), "yuv420p".to_string(),
+            "-movflags".to_string(), "+faststart".to_string(),
+            "-y".to_string(),
+            output_str.clone(),
+        ];
+        
+        result = run_ffmpeg_with_cancel(task_id, cancel, &args);
+        
+        if result.is_ok() {
+            info!("方案 {} 成功!", i + 1);
+            break;
+        } else {
+            error!("方案 {} 失败: {:?}", i + 1, result);
+        }
+    }
+    
     let _ = fs::remove_file(&temp_subtitle_path);
-
+    
     match result {
         Ok(_) => {
             info!("字幕添加成功: {:?}", output_path);
             return Ok(());
         }
         Err(e) => {
-            error!("subtitles/ass 滤镜失败: {}", e);
+            error!("所有 subtitles/ass 滤镜方案都失败: {}", e);
         }
     }
 
