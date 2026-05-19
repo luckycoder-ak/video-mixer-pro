@@ -1707,41 +1707,18 @@ fn process_single_mode(
                 return Err(err);
             }
 
-            // 从两个文件夹各选一个（放在不同作用域，避免同时借用 used_per_folder）
-            let folder_key1 = normalize_folder_key(&segment.source_folder);
-            let selected1 = {
-                let folder_used1 = used_per_folder.entry(folder_key1).or_insert_with(HashSet::new);
-                select_random_videos(&videos, 1, folder_used1)
-                    .map_err(|e| format!("片段 {} 从第一个文件夹选取素材失败: {}", i + 1, e))?
-            };
+            // 从两个文件夹各选一个（模板片段不进行全局消重，视频可重复使用）
+            let selected1 = select_random_videos(&videos, 1, &HashSet::new())
+                .map_err(|e| format!("片段 {} 从第一个文件夹选取素材失败: {}", i + 1, e))?;
 
-            let folder_key2 = normalize_folder_key(&segment.source_folder2);
-            let selected2 = {
-                let folder_used2 = used_per_folder.entry(folder_key2).or_insert_with(HashSet::new);
-                select_random_videos(&videos2, 1, folder_used2)
-                    .map_err(|e| format!("片段 {} 从第二个文件夹选取素材失败: {}", i + 1, e))?
-            };
+            let selected2 = select_random_videos(&videos2, 1, &HashSet::new())
+                .map_err(|e| format!("片段 {} 从第二个文件夹选取素材失败: {}", i + 1, e))?;
 
             selected = [selected1, selected2].concat();
         } else {
-            // 普通模式：从单个文件夹选取
-            if videos.len() < video_count {
-                let err = format!(
-                    "片段 {} 需要 {} 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
-                    i + 1, video_count, min_duration, videos.len()
-                );
-                push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
-                return Err(err);
-            }
-
-            let folder_key = normalize_folder_key(&segment.source_folder);
-            let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
-            selected = select_random_videos(&videos, video_count, folder_used)
+            // 普通模式：从单个文件夹选取（模板片段不进行全局消重，视频可重复使用）
+            selected = select_random_videos(&videos, video_count, &HashSet::new())
                 .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
-
-            for s in &selected {
-                folder_used.insert(s.to_string_lossy().to_string());
-            }
         }
 
         if i == 0 {
@@ -2296,8 +2273,9 @@ fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> Strin
         // - y=h-th-100: 底部往上100像素，给多行字幕留空间
         // - line_spacing=8: 行间距
         // - enable='between(t,{},{})': 在指定时间段显示
+        // 逗号在 FFmpeg 滤镜链中是分隔符，必须用 \\, 转义
         let drawtext = format!(
-            "drawtext=fontfile='{}':text='{}':fontsize=36:fontcolor=white:borderw=3:bordercolor=black:x=(w-tw)/2:y=h-th-100:line_spacing=8:enable='between(t,{},{})'",
+            "drawtext=fontfile='{}':text='{}':fontsize=36:fontcolor=white:borderw=3:bordercolor=black:x=(w-tw)/2:y=h-th-100:line_spacing=8:enable='between(t\\,{}\\,{})'",
             escaped_font_path, escaped_text, start, end
         );
         parts.push(drawtext);
@@ -2381,19 +2359,27 @@ fn escape_ffmpeg_path(path: &str) -> String {
     }
 }
 
+fn get_app_temp_dir() -> PathBuf {
+    let base = crate::storage::resolve_app_data_file_path()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_else(|| std::env::temp_dir());
+    let dir = base.join(".temp");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
 static BUNDLED_FONT_DATA: &[u8] = include_bytes!("../resources/NotoSansCJKsc-Regular.otf");
 
 fn get_bundled_font_path() -> std::io::Result<PathBuf> {
-    let temp_dir = std::env::temp_dir();
-    // 使用 .ttf 扩展名，FFmpeg drawtext 对 ttf 格式支持最好
-    let font_temp_path = temp_dir.join(format!("vmix_pro_font_{}.ttf", Uuid::new_v4()));
-    
-    // 如果临时字体文件不存在，写入字体数据
+    let app_temp = get_app_temp_dir();
+    let font_temp_path = app_temp.join(format!("vmix_pro_font_{}.ttf", Uuid::new_v4()));
+
     if !font_temp_path.exists() {
         std::fs::write(&font_temp_path, BUNDLED_FONT_DATA)?;
         info!("已提取内置字体到: {:?}", font_temp_path);
     }
-    
+
     Ok(font_temp_path)
 }
 
@@ -2426,9 +2412,108 @@ fn add_subtitles(
     let subtitle_ext = subtitle_path_buf.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let is_ass_format = subtitle_ext == "ass" || subtitle_ext == "ssa";
 
-    // 方案1：尝试使用 drawtext 方案（主要方案，硬编码字幕，不依赖系统字体）
+    // 方案1：优先使用 subtitles/ass 滤镜（原生SRT支持，无逗号转义问题）
+    // 提取内置字体，通过 fontsdir 指定给 subtitles 滤镜
+    {
+        let app_temp_dir = get_app_temp_dir();
+        let temp_subtitle_path = app_temp_dir.join(format!("temp_subtitle_{}.srt", Uuid::new_v4()));
+
+        fs::copy(&subtitle_path_buf, &temp_subtitle_path).map_err(|e| format!("复制字幕文件失败: {}", e))?;
+        let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
+
+        // 提取内置字体到临时目录，供 subtitles 滤镜使用
+        let fonts_dir = match get_bundled_font_path() {
+            Ok(font_path) => {
+                if let Some(parent) = font_path.parent() {
+                    Some(parent.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                error!("无法获取内置字体: {}", e);
+                None
+            }
+        };
+
+        let mut filter_options = Vec::new();
+        let escaped_path = escape_ffmpeg_path(&temp_subtitle_str);
+
+        // fonts_dir 需要转义处理：冒号替换（: → \:），反斜杠改正斜杠（\ → /）
+        let fonts_escaped = fonts_dir.as_ref().map(|d| {
+            d.replace(':', "\\:").replace('\\', "/")
+        });
+
+        if let Some(ref fonts) = fonts_escaped {
+            filter_options.push(if is_ass_format {
+                format!("ass=filename={}:fontsdir={}", escaped_path, fonts)
+            } else {
+                format!("subtitles=filename={}:fontsdir={}:force_style='Fontname=Noto Sans CJK SC':si=0", escaped_path, fonts)
+            });
+
+            let path_with_quotes = temp_subtitle_str.replace('\\', "/");
+            filter_options.push(if is_ass_format {
+                format!("ass=filename='{}':fontsdir={}", path_with_quotes, fonts)
+            } else {
+                format!("subtitles=filename='{}':fontsdir={}:force_style='Fontname=Noto Sans CJK SC':si=0", path_with_quotes, fonts)
+            });
+        }
+
+        // 不带 fontsdir 的备选
+        filter_options.push(if is_ass_format {
+            format!("ass=filename={}", escaped_path)
+        } else {
+            format!("subtitles=filename={}:si=0", escaped_path)
+        });
+
+        let path_with_quotes = temp_subtitle_str.replace('\\', "/");
+        filter_options.push(if is_ass_format {
+            format!("ass=filename='{}'", path_with_quotes)
+        } else {
+            format!("subtitles=filename='{}':si=0", path_with_quotes)
+        });
+
+        let mut subtitles_success = false;
+
+        for (i, filter_str) in filter_options.iter().enumerate() {
+            info!("尝试 subtitles/ass 方案 {}: {}", i + 1, filter_str);
+
+            let args: Vec<String> = vec![
+                "-hide_banner".to_string(),
+                "-loglevel".to_string(), "info".to_string(),
+                "-i".to_string(), input_str.clone(),
+                "-vf".to_string(), filter_str.clone(),
+                "-c:v".to_string(), encoder.video_codec.to_string(),
+                "-c:a".to_string(), "copy".to_string(),
+                "-pix_fmt".to_string(), "yuv420p".to_string(),
+                "-movflags".to_string(), "+faststart".to_string(),
+                "-y".to_string(),
+                output_str.clone(),
+            ];
+
+            match run_ffmpeg_with_cancel(task_id, cancel, &args) {
+                Ok(_) => {
+                    info!("subtitles/ass 方案 {} 成功!", i + 1);
+                    subtitles_success = true;
+                    break;
+                }
+                Err(e) => {
+                    error!("subtitles/ass 方案 {} 失败: {:?}", i + 1, e);
+                }
+            }
+        }
+
+        let _ = fs::remove_file(&temp_subtitle_path);
+
+        if subtitles_success {
+            info!("字幕添加成功: {:?}", output_path);
+            return Ok(());
+        }
+    }
+
+    // 方案2：对于非ASS格式，回退到 drawtext 方案（硬编码字幕）
     if !is_ass_format {
-        info!("尝试 drawtext 字幕方案（主要方案）");
+        info!("回退到 drawtext 字幕方案（备选方案）");
         let srt_content = match fs::read_to_string(subtitle_path) {
             Ok(c) => c,
             Err(e) => {
@@ -2488,70 +2573,6 @@ fn add_subtitles(
         }
     }
 
-    // 方案2：回退到 subtitles/ass 滤镜（备选方案）
-    info!("回退到 subtitles/ass 滤镜方案");
-    let temp_dir = std::env::temp_dir();
-    let temp_subtitle_path = temp_dir.join(format!("temp_subtitle_{}.srt", Uuid::new_v4()));
-
-    fs::copy(&subtitle_path_buf, &temp_subtitle_path).map_err(|e| format!("复制字幕文件失败: {}", e))?;
-    let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
-    
-    // 尝试多种路径格式
-    let mut filter_options = Vec::new();
-    let escaped_path = escape_ffmpeg_path(&temp_subtitle_str);
-    filter_options.push(if is_ass_format {
-        format!("ass=filename={}", escaped_path)
-    } else {
-        format!("subtitles=filename={}:si=0", escaped_path)
-    });
-    
-    let path_with_quotes = temp_subtitle_str.replace('\\', "/");
-    filter_options.push(if is_ass_format {
-        format!("ass=filename='{}'", path_with_quotes)
-    } else {
-        format!("subtitles=filename='{}':si=0", path_with_quotes)
-    });
-    
-    let mut result: Result<(), String> = Err("未尝试任何方案".to_string());
-    
-    for (i, filter_str) in filter_options.iter().enumerate() {
-        info!("尝试 subtitles/ass 方案 {}: {}", i + 1, filter_str);
-        
-        let args: Vec<String> = vec![
-            "-hide_banner".to_string(),
-            "-loglevel".to_string(), "info".to_string(),
-            "-i".to_string(), input_str.clone(),
-            "-vf".to_string(), filter_str.clone(),
-            "-c:v".to_string(), encoder.video_codec.to_string(),
-            "-c:a".to_string(), "copy".to_string(),
-            "-pix_fmt".to_string(), "yuv420p".to_string(),
-            "-movflags".to_string(), "+faststart".to_string(),
-            "-y".to_string(),
-            output_str.clone(),
-        ];
-        
-        result = run_ffmpeg_with_cancel(task_id, cancel, &args);
-        
-        if result.is_ok() {
-            info!("subtitles/ass 方案 {} 成功!", i + 1);
-            break;
-        } else {
-            error!("subtitles/ass 方案 {} 失败: {:?}", i + 1, result);
-        }
-    }
-    
-    let _ = fs::remove_file(&temp_subtitle_path);
-    
-    match result {
-        Ok(_) => {
-            info!("字幕添加成功: {:?}", output_path);
-            return Ok(());
-        }
-        Err(e) => {
-            error!("所有字幕方案都失败: {}", e);
-        }
-    }
-    
     // 所有方案都失败，复制原视频
     warn!("所有字幕方案都失败，复制原视频不添加字幕");
     fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
@@ -2690,8 +2711,8 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
         push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Completed, None);
 
-        // 创建任务级别的共享临时目录
-        let task_temp_dir = std::env::temp_dir().join(format!("video_mixer_{}", task_id));
+        // 创建任务级别的共享临时目录（放在应用数据目录下）
+        let task_temp_dir = get_app_temp_dir().join(format!("video_mixer_{}", task_id));
         if let Err(e) = fs::create_dir_all(&task_temp_dir) {
             error!("创建任务临时目录失败: {}", e);
             push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
