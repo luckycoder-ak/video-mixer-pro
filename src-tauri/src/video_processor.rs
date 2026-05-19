@@ -1707,30 +1707,22 @@ fn process_single_mode(
                 return Err(err);
             }
 
-            // 从两个文件夹各选一个
+            // 从两个文件夹各选一个（放在不同作用域，避免同时借用 used_per_folder）
             let folder_key1 = normalize_folder_key(&segment.source_folder);
-            let folder_used1 = used_per_folder.entry(folder_key1).or_insert_with(HashSet::new);
-            let selected1 = select_random_videos(&videos, 1, folder_used1)
-                .map_err(|e| format!("片段 {} 从第一个文件夹选取素材失败: {}", i + 1, e))?;
+            let selected1 = {
+                let folder_used1 = used_per_folder.entry(folder_key1).or_insert_with(HashSet::new);
+                select_random_videos(&videos, 1, folder_used1)
+                    .map_err(|e| format!("片段 {} 从第一个文件夹选取素材失败: {}", i + 1, e))?
+            };
 
             let folder_key2 = normalize_folder_key(&segment.source_folder2);
-            let folder_used2 = used_per_folder.entry(folder_key2).or_insert_with(HashSet::new);
-            let selected2 = select_random_videos(&videos2, 1, folder_used2)
-                .map_err(|e| format!("片段 {} 从第二个文件夹选取素材失败: {}", i + 1, e))?;
+            let selected2 = {
+                let folder_used2 = used_per_folder.entry(folder_key2).or_insert_with(HashSet::new);
+                select_random_videos(&videos2, 1, folder_used2)
+                    .map_err(|e| format!("片段 {} 从第二个文件夹选取素材失败: {}", i + 1, e))?
+            };
 
             selected = [selected1, selected2].concat();
-
-            // 标记两个文件夹的已使用视频
-            for s in &selected {
-                let path_str = s.to_string_lossy().to_string();
-                // 根据路径判断属于哪个文件夹的记录
-                let is_folder1 = s.starts_with(&segment.source_folder);
-                if is_folder1 {
-                    folder_used1.insert(path_str);
-                } else {
-                    folder_used2.insert(path_str);
-                }
-            }
         } else {
             // 普通模式：从单个文件夹选取
             if videos.len() < video_count {
