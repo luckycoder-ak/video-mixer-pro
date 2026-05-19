@@ -1,6 +1,7 @@
 export interface TemplateSegment {
   segment_index: number;
   source_folder: string;
+  source_folder2: string;
   crop_mode: 'single' | 'dual' | 'quadrant';
   duration: number;
   scale_percent: number;
@@ -71,9 +72,9 @@ export const createDefaultConfig = (): VideoConfig => ({
   template_duration: 150,
   segment_count: 3,
   template_segments: [
-    { segment_index: 1, source_folder: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
-    { segment_index: 2, source_folder: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
-    { segment_index: 3, source_folder: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
+    { segment_index: 1, source_folder: '', source_folder2: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
+    { segment_index: 2, source_folder: '', source_folder2: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
+    { segment_index: 3, source_folder: '', source_folder2: '', crop_mode: 'single', duration: 50, scale_percent: 51 },
   ],
   tutorial_folder: '',
   output_folder: '',

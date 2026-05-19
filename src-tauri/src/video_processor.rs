@@ -1650,6 +1650,10 @@ fn process_single_mode(
         let scan_step_id = format!("video_{}__scan_{}", video_index, i + 1);
         push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Running, None);
 
+        // 检查是否需要使用第二个文件夹：仅双列模式且配置了第二个文件夹
+        let use_second_folder = matches!(segment.crop_mode, config::CropMode::Dual) 
+            && !segment.source_folder2.trim().is_empty();
+
         let videos = get_video_files(&segment.source_folder)?;
         if videos.is_empty() {
             let err = format!("片段 {} 的源文件夹中没有视频文件", i + 1);
@@ -1657,67 +1661,150 @@ fn process_single_mode(
             return Err(err);
         }
 
+        // 获取第二个文件夹的视频（如果需要）
+        let (videos2, second_folder_exists) = if use_second_folder {
+            let vids2 = get_video_files(&segment.source_folder2)?;
+            if vids2.is_empty() {
+                let err = format!("片段 {} 的第二个源文件夹中没有视频文件", i + 1);
+                push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
+                return Err(err);
+            }
+            (vids2, true)
+        } else {
+            (Vec::new(), false)
+        };
+
         let video_count = match segment.crop_mode {
             config::CropMode::Single => 1,
             config::CropMode::Dual => 2,
             config::CropMode::Quadrant => 4,
         };
 
-        if videos.len() < video_count {
-            let err = format!("片段 {} 需要 {} 个视频文件，但源文件夹中只有 {} 个", i + 1, video_count, videos.len());
-            push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
-            return Err(err);
-        }
-
-        // 预过滤时长不足的素材：截取范围是 [start_offset, start_offset + duration]，
-        // 否则 ffmpeg 在 dual/quadrant 的 cell 阶段会产出空视频流，merge 时报 "matches no streams"。
+        // 预过滤时长不足的素材
         let min_duration = segment_offsets[i] + segment_durations[i];
         let videos = filter_videos_by_min_duration(&videos, min_duration);
-        if videos.len() < video_count {
-            let err = format!(
-                "片段 {} 需要 {} 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
-                i + 1, video_count, min_duration, videos.len()
-            );
-            push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
-            return Err(err);
+        
+        let selected: Vec<PathBuf>;
+
+        if use_second_folder {
+            // 双列模式且配置了第二个文件夹：各取一个
+            if videos.is_empty() {
+                let err = format!(
+                    "片段 {} 第一个文件夹需要 1 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
+                    i + 1, min_duration, videos.len()
+                );
+                push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
+                return Err(err);
+            }
+
+            let videos2 = filter_videos_by_min_duration(&videos2, min_duration);
+            if videos2.is_empty() {
+                let err = format!(
+                    "片段 {} 第二个文件夹需要 1 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
+                    i + 1, min_duration, videos2.len()
+                );
+                push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
+                return Err(err);
+            }
+
+            // 从两个文件夹各选一个
+            let folder_key1 = normalize_folder_key(&segment.source_folder);
+            let folder_used1 = used_per_folder.entry(folder_key1).or_insert_with(HashSet::new);
+            let selected1 = select_random_videos(&videos, 1, folder_used1)
+                .map_err(|e| format!("片段 {} 从第一个文件夹选取素材失败: {}", i + 1, e))?;
+
+            let folder_key2 = normalize_folder_key(&segment.source_folder2);
+            let folder_used2 = used_per_folder.entry(folder_key2).or_insert_with(HashSet::new);
+            let selected2 = select_random_videos(&videos2, 1, folder_used2)
+                .map_err(|e| format!("片段 {} 从第二个文件夹选取素材失败: {}", i + 1, e))?;
+
+            selected = [selected1, selected2].concat();
+
+            // 标记两个文件夹的已使用视频
+            for s in &selected {
+                let path_str = s.to_string_lossy().to_string();
+                // 根据路径判断属于哪个文件夹的记录
+                let is_folder1 = s.starts_with(&segment.source_folder);
+                if is_folder1 {
+                    folder_used1.insert(path_str);
+                } else {
+                    folder_used2.insert(path_str);
+                }
+            }
+        } else {
+            // 普通模式：从单个文件夹选取
+            if videos.len() < video_count {
+                let err = format!(
+                    "片段 {} 需要 {} 个时长 ≥ {:.1}s 的视频文件，但符合条件的只有 {} 个",
+                    i + 1, video_count, min_duration, videos.len()
+                );
+                push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Error, Some(err.clone()));
+                return Err(err);
+            }
+
+            let folder_key = normalize_folder_key(&segment.source_folder);
+            let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
+            selected = select_random_videos(&videos, video_count, folder_used)
+                .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
+
+            for s in &selected {
+                folder_used.insert(s.to_string_lossy().to_string());
+            }
         }
 
-        // S6：仅在同一 source_folder 内去重，跨 folder 互不干扰
-        let folder_key = normalize_folder_key(&segment.source_folder);
-        let folder_used = used_per_folder.entry(folder_key).or_insert_with(HashSet::new);
-        let selected = select_random_videos(&videos, video_count, folder_used)
-            .map_err(|e| format!("片段 {} 选取素材失败: {}", i + 1, e))?;
         if i == 0 {
             _first_segment_primary_video = selected.first().cloned();
         }
-        let source_folder_abs = std::fs::canonicalize(&segment.source_folder)
+        
+        // 准备日志信息
+        let source_folder_abs1 = std::fs::canonicalize(&segment.source_folder)
             .unwrap_or_else(|_| PathBuf::from(&segment.source_folder))
             .to_string_lossy()
             .to_string();
+        
         let selected_summary = selected
             .iter()
             .map(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        push_log(
-            tasks,
-            task_id,
-            LogLevel::Info,
-            video_index,
+        
+        // 构建更详细的日志信息
+        let log_msg = if use_second_folder {
+            let source_folder_abs2 = std::fs::canonicalize(&segment.source_folder2)
+                .unwrap_or_else(|_| PathBuf::from(&segment.source_folder2))
+                .to_string_lossy()
+                .to_string();
             format!(
-                "片段{} 从文件夹 {} 选中素材 {} 个，裁剪模式 {:?}，偏移 {:.2}s，时长 {:.2}s；文件名：{}",
+                "片段{} 从文件夹1 {} 和 文件夹2 {} 选中素材 {} 个，裁剪模式 {:?}，偏移 {:.2}s，时长 {:.2}s；文件名：{}",
                 i + 1,
-                source_folder_abs,
+                source_folder_abs1,
+                source_folder_abs2,
                 selected.len(),
                 segment.crop_mode,
                 segment_offsets[i],
                 segment_durations[i],
                 selected_summary
-            ),
+            )
+        } else {
+            format!(
+                "片段{} 从文件夹 {} 选中素材 {} 个，裁剪模式 {:?}，偏移 {:.2}s，时长 {:.2}s；文件名：{}",
+                i + 1,
+                source_folder_abs1,
+                selected.len(),
+                segment.crop_mode,
+                segment_offsets[i],
+                segment_durations[i],
+                selected_summary
+            )
+        };
+        
+        push_log(
+            tasks,
+            task_id,
+            LogLevel::Info,
+            video_index,
+            log_msg,
         );
-        for s in &selected {
-            folder_used.insert(s.to_string_lossy().to_string());
-        }
 
         push_step(tasks, task_id, &scan_step_id, &format!("视频{} - 扫描片段{}素材", video_index, i + 1), StepStatus::Completed, None);
 

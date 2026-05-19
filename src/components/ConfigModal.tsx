@@ -71,6 +71,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         : {
             segment_index: i,
             source_folder: '',
+            source_folder2: '',
             crop_mode: 'single' as const,
             duration: avgDuration,
             scale_percent: 51,
@@ -143,7 +144,7 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     }
   };
 
-  const handleSelectFolder = async (isTutorialFolder: boolean, index?: number, isRootFolder?: boolean) => {
+  const handleSelectFolder = async (isTutorialFolder: boolean, index?: number, isRootFolder?: boolean, isSecondFolder?: boolean) => {
     if (!isTauriEnv) {
       console.warn('请在 Tauri 应用中运行此功能');
       return;
@@ -157,7 +158,11 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         } else if (isTutorialFolder) {
           handleInputChange('tutorial_folder', selected);
         } else if (index !== undefined) {
-          handleSegmentChange(index, 'source_folder', selected);
+          if (isSecondFolder) {
+            handleSegmentChange(index, 'source_folder2', selected);
+          } else {
+            handleSegmentChange(index, 'source_folder', selected);
+          }
         } else {
           handleInputChange('output_folder', selected);
         }
@@ -469,6 +474,37 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
                     </div>
                   </div>
                 </div>
+
+                {segment.crop_mode === 'dual' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      双列第二素材文件夹 <span className="text-gray-400">(可选)</span>
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleSelectFolder(false, index, false, true)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                      >
+                        选择文件夹
+                      </button>
+                      <div className="flex-1 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 flex items-center gap-2">
+                        <span>📁</span>
+                        <span className="truncate">
+                          {segment.source_folder2 || '未选择（将从第一个文件夹随机抽取）'}
+                        </span>
+                      </div>
+                      {segment.source_folder2 && (
+                        <button
+                          onClick={() => handleSegmentChange(index, 'source_folder2', '')}
+                          className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm"
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">如未选择，左右两个视频均从第一个文件夹随机抽取</p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">裁剪模式</label>

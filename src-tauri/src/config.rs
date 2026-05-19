@@ -17,6 +17,8 @@ fn default_scale_percent() -> u32 {
 pub struct TemplateSegment {
     pub segment_index: usize,
     pub source_folder: String,
+    #[serde(default)]
+    pub source_folder2: String,
     pub crop_mode: CropMode,
     pub duration: f32,
     #[serde(default = "default_scale_percent")]
@@ -144,6 +146,15 @@ impl VideoConfig {
                     "第 {} 个片段的来源文件夹不存在: {}",
                     expected_index, seg.source_folder
                 ));
+            }
+            // 如果配置了第二个文件夹（仅双列模式有意义），也需要验证
+            if !seg.source_folder2.trim().is_empty() {
+                if !std::path::Path::new(seg.source_folder2.trim()).is_dir() {
+                    return Err(format!(
+                        "第 {} 个片段的第二个来源文件夹不存在: {}",
+                        expected_index, seg.source_folder2
+                    ));
+                }
             }
         }
 
