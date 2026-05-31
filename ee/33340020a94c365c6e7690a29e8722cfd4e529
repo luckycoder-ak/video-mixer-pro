@@ -1,0 +1,1175 @@
+openspec/changes/add-scheduled-tiktok-fetcher/design.md
+  6cbf3f6402d188d0 1-298 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,298]}]}]}
+openspec/changes/add-feishu-webhook-notification/spec.md
+  6cbf3f6402d188d0 1-291 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,291]}]}]}
+src-tauri/src/config.rs
+  6cbf3f6402d188d0 5,55-57,80,249-303 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":5},{"Range":[55,57]},{"Single":80},{"Range":[249,303]}]}]}
+src/types.ts
+  6cbf3f6402d188d0 24,29-77,132 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":24},{"Range":[29,77]},{"Single":132}]}]}
+src-tauri/src/scheduler.rs
+  6cbf3f6402d188d0 1-722 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,722]}]}]}
+src-tauri/app_data_store/cfg-upsert-d6a19e55-0629-4399-9d92-af747f41473c/scheduled_runs.json
+  6cbf3f6402d188d0 1-20 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,20]}]}]}
+src/components/ConfigModal.tsx
+  6cbf3f6402d188d0 4-5,602-608 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[4,5]},{"Range":[602,608]}]}]}
+openspec/changes/add-feishu-webhook-notification/proposal.md
+  6cbf3f6402d188d0 1-105 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,105]}]}]}
+src-tauri/Cargo.toml
+  6cbf3f6402d188d0 27-29 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[27,29]}]}]}
+src-tauri/app_data.json
+  6cbf3f6402d188d0 1-47 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,47]}]}]}
+src/components/ScheduledFetcherCard.tsx
+  6cbf3f6402d188d0 1-239 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,239]}]}]}
+src-tauri/capabilities/default.json
+  6cbf3f6402d188d0 19-30 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[19,30]}]}]}
+src-tauri/gen/schemas/capabilities.json
+  6cbf3f6402d188d0 1 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":1}]}]}
+src/components/ScheduledFetcherTestModal.tsx
+  6cbf3f6402d188d0 1-155 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,155]}]}]}
+src-tauri/src/main.rs
+  6cbf3f6402d188d0 6-7,22-25,42-43,83-98,122-125 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[6,7]},{"Range":[22,25]},{"Range":[42,43]},{"Range":[83,98]},{"Range":[122,125]}]}]}
+src/components/ScheduledRunsList.tsx
+  6cbf3f6402d188d0 1-250 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,250]}]}]}
+openspec/changes/add-feishu-webhook-notification/design.md
+  6cbf3f6402d188d0 1-306 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,306]}]}]}
+src/App.tsx
+  6cbf3f6402d188d0 3,9,32-63,248-256 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":3},{"Single":9},{"Range":[32,63]},{"Range":[248,256]}]}]}
+.gitignore
+  6cbf3f6402d188d0 27 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":27}]}]}
+src-tauri/tauri.conf.json
+  6cbf3f6402d188d0 35-37 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[35,37]}]}]}
+openspec/changes/add-scheduled-tiktok-fetcher/tasks.md
+  6cbf3f6402d188d0 1-156 gitai:{"mixed_line_ranges":[{"Single":1}],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,156]}]}]}
+openspec/changes/add-scheduled-tiktok-fetcher/spec.md
+  6cbf3f6402d188d0 1-368 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,368]}]}]}
+openspec/changes/add-scheduled-tiktok-fetcher/proposal.md
+  6cbf3f6402d188d0 1-94 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,94]}]}]}
+src-tauri/src/scheduled_fetcher.rs
+  6cbf3f6402d188d0 1-1049 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,1049]}]}]}
+src-tauri/src/storage.rs
+  6cbf3f6402d188d0 11,13,24-34,404,570-582,588,590,624,678-893,947-957,1000,1067,1219-1307 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":11},{"Single":13},{"Range":[24,34]},{"Single":404},{"Range":[570,582]},{"Single":588},{"Single":590},{"Single":624},{"Range":[678,893]},{"Range":[947,957]},{"Single":1000},{"Single":1067},{"Range":[1219,1307]}]}]}
+AGENTS.md
+  6cbf3f6402d188d0 40-47,67-75,91-92,94-95 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[40,47]},{"Range":[67,75]},{"Range":[91,92]},{"Range":[94,95]}]}]}
+src/components/ScheduledFetcherForm.tsx
+  6cbf3f6402d188d0 1-308 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,308]}]}]}
+.github/workflows/build-windows.yml
+  6cbf3f6402d188d0 59-71 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[59,71]}]}]}
+openspec/changes/add-feishu-webhook-notification/tasks.md
+  6cbf3f6402d188d0 1-197 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a1bfd23713234ef84e33588","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[1,197]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ee33340020a94c365c6e7690a29e8722cfd4e529",
+  "prompts": {
+    "6cbf3f6402d188d0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a1bd557713234ef84e33168",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "huwucheng <huwucheng@bytedance.com>",
+      "messages": [],
+      "total_additions": 5195,
+      "total_deletions": 152,
+      "accepted_lines": 5051,
+      "overriden_lines": 1
+    }
+  },
+  "attestation_metadata": {
+    ".github/workflows/build-windows.yml": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              59,
+              71
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  59,
+                  71
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    ".gitignore": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 27
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 27
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "AGENTS.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              40,
+              47
+            ]
+          },
+          {
+            "Range": [
+              67,
+              75
+            ]
+          },
+          {
+            "Range": [
+              91,
+              92
+            ]
+          },
+          {
+            "Range": [
+              94,
+              95
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  40,
+                  47
+                ]
+              },
+              {
+                "Range": [
+                  67,
+                  75
+                ]
+              },
+              {
+                "Range": [
+                  91,
+                  92
+                ]
+              },
+              {
+                "Range": [
+                  94,
+                  95
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-feishu-webhook-notification/design.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              306
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  306
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-feishu-webhook-notification/proposal.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              105
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  105
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-feishu-webhook-notification/spec.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              291
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  291
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-feishu-webhook-notification/tasks.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              197
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  197
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-scheduled-tiktok-fetcher/design.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              298
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  298
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-scheduled-tiktok-fetcher/proposal.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              94
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  94
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-scheduled-tiktok-fetcher/spec.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              368
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  368
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "openspec/changes/add-scheduled-tiktok-fetcher/tasks.md": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              156
+            ]
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 1
+          }
+        ],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  156
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/Cargo.toml": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              27,
+              29
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  27,
+                  29
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/app_data.json": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              47
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  47
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/app_data_store/cfg-upsert-d6a19e55-0629-4399-9d92-af747f41473c/scheduled_runs.json": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              20
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  20
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/capabilities/default.json": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              19,
+              30
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  19,
+                  30
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/gen/schemas/capabilities.json": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 1
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/config.rs": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 5
+          },
+          {
+            "Range": [
+              55,
+              57
+            ]
+          },
+          {
+            "Single": 80
+          },
+          {
+            "Range": [
+              249,
+              303
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 5
+              },
+              {
+                "Range": [
+                  55,
+                  57
+                ]
+              },
+              {
+                "Single": 80
+              },
+              {
+                "Range": [
+                  249,
+                  303
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/main.rs": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              6,
+              7
+            ]
+          },
+          {
+            "Range": [
+              22,
+              25
+            ]
+          },
+          {
+            "Range": [
+              42,
+              43
+            ]
+          },
+          {
+            "Range": [
+              83,
+              98
+            ]
+          },
+          {
+            "Range": [
+              122,
+              125
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  6,
+                  7
+                ]
+              },
+              {
+                "Range": [
+                  22,
+                  25
+                ]
+              },
+              {
+                "Range": [
+                  42,
+                  43
+                ]
+              },
+              {
+                "Range": [
+                  83,
+                  98
+                ]
+              },
+              {
+                "Range": [
+                  122,
+                  125
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/scheduled_fetcher.rs": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              1049
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  1049
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/scheduler.rs": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              722
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  722
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/src/storage.rs": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 11
+          },
+          {
+            "Single": 13
+          },
+          {
+            "Range": [
+              24,
+              34
+            ]
+          },
+          {
+            "Single": 404
+          },
+          {
+            "Range": [
+              570,
+              582
+            ]
+          },
+          {
+            "Single": 588
+          },
+          {
+            "Single": 590
+          },
+          {
+            "Single": 624
+          },
+          {
+            "Range": [
+              678,
+              893
+            ]
+          },
+          {
+            "Range": [
+              947,
+              957
+            ]
+          },
+          {
+            "Single": 1000
+          },
+          {
+            "Single": 1067
+          },
+          {
+            "Range": [
+              1219,
+              1307
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 11
+              },
+              {
+                "Single": 13
+              },
+              {
+                "Range": [
+                  24,
+                  34
+                ]
+              },
+              {
+                "Single": 404
+              },
+              {
+                "Range": [
+                  570,
+                  582
+                ]
+              },
+              {
+                "Single": 588
+              },
+              {
+                "Single": 590
+              },
+              {
+                "Single": 624
+              },
+              {
+                "Range": [
+                  678,
+                  893
+                ]
+              },
+              {
+                "Range": [
+                  947,
+                  957
+                ]
+              },
+              {
+                "Single": 1000
+              },
+              {
+                "Single": 1067
+              },
+              {
+                "Range": [
+                  1219,
+                  1307
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src-tauri/tauri.conf.json": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              35,
+              37
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  35,
+                  37
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/App.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 3
+          },
+          {
+            "Single": 9
+          },
+          {
+            "Range": [
+              32,
+              63
+            ]
+          },
+          {
+            "Range": [
+              248,
+              256
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 3
+              },
+              {
+                "Single": 9
+              },
+              {
+                "Range": [
+                  32,
+                  63
+                ]
+              },
+              {
+                "Range": [
+                  248,
+                  256
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/components/ConfigModal.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              4,
+              5
+            ]
+          },
+          {
+            "Range": [
+              602,
+              608
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  4,
+                  5
+                ]
+              },
+              {
+                "Range": [
+                  602,
+                  608
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/components/ScheduledFetcherCard.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              239
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  239
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/components/ScheduledFetcherForm.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              308
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  308
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/components/ScheduledFetcherTestModal.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              155
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  155
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/components/ScheduledRunsList.tsx": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              250
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  250
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/types.ts": [
+      {
+        "hash": "6cbf3f6402d188d0",
+        "line_ranges": [
+          {
+            "Single": 24
+          },
+          {
+            "Range": [
+              29,
+              77
+            ]
+          },
+          {
+            "Single": 132
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a1bfd23713234ef84e33588",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 24
+              },
+              {
+                "Range": [
+                  29,
+                  77
+                ]
+              },
+              {
+                "Single": 132
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "6cbf3f6402d188d0": {
+      "tool": "trae",
+      "conversation_id": "6a1bd557713234ef84e33168",
+      "session_id": "6a1bd557713234ef84e33168",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
