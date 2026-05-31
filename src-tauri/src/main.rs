@@ -5,6 +5,7 @@ mod storage;
 mod video_processor;
 mod scheduled_fetcher;
 mod scheduler;
+mod notifier;
 
 use log::info;
 use std::collections::{HashMap, HashSet};
@@ -23,6 +24,8 @@ pub struct AppState {
     pub scheduler: Arc<scheduler::Scheduler>,
     /// yt-dlp 启动期健康检查结果（false 时调度器不触发新执行）
     pub yt_dlp_healthy: Arc<RwLock<bool>>,
+    /// 全局应用设置（包含飞书 Webhook URL 等）
+    pub app_settings: Arc<RwLock<storage::AppSettings>>,
 }
 
 fn main() {
@@ -41,6 +44,7 @@ fn main() {
             app_data_file: Arc::new(RwLock::new(None)),
             scheduler: scheduler::Scheduler::new(),
             yt_dlp_healthy: Arc::new(RwLock::new(false)),
+            app_settings: Arc::new(RwLock::new(storage::AppSettings::default())),
         })
         .setup(|app| {
             info!("Application setup complete");
@@ -71,6 +75,18 @@ fn main() {
                     if let Ok(mut used) = state.used_tutorial_videos.write() {
                         *used = runtime.used_tutorial_by_config;
                     }
+                    let webhook_for_log = runtime.app_data.app_settings.feishu_webhook_url.clone();
+                    if let Ok(mut s) = state.app_settings.write() {
+                        *s = runtime.app_data.app_settings;
+                    }
+                    if webhook_for_log.is_empty() {
+                        info!("Feishu webhook 未配置（飞书通知将静默跳过）");
+                    } else {
+                        info!(
+                            "Feishu webhook 已加载: {}",
+                            notifier::redact_webhook(&webhook_for_log)
+                        );
+                    }
                     info!(
                         "Loaded {} configs, {} tasks, {} used tutorial videos from app_data_store",
                         configs_len, tasks_len, tutorial_used_len
@@ -91,6 +107,20 @@ fn main() {
                 let scheduler = state.scheduler.clone();
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
+                    // 启动期：将上次进程意外退出残留的非终态 run 修正为 Interrupted
+                    let app_state = app_handle.state::<AppState>();
+                    let cids: Vec<String> = app_state
+                        .configs
+                        .read()
+                        .map(|g| g.iter().map(|c| c.id.clone()).collect())
+                        .unwrap_or_default();
+                    match storage::mark_unfinished_runs_as_interrupted(&cids) {
+                        Ok(n) if n > 0 => {
+                            info!("启动期修正 {} 条未完成的定时任务为「中断停止」", n)
+                        }
+                        Ok(_) => {}
+                        Err(e) => info!("启动期修正未完成 run 失败: {}", e),
+                    }
                     scheduler.boot_from_app_data(app_handle).await;
                 });
             } else {
@@ -108,6 +138,9 @@ fn main() {
             storage::save_data,
             storage::save_configs,
             storage::get_data_file_path,
+            storage::get_app_settings,
+            storage::save_app_settings,
+            storage::send_feishu_test_message,
             video_processor::create_task,
             video_processor::get_tasks,
             video_processor::refresh_tasks_from_disk,

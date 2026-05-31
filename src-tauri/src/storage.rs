@@ -812,6 +812,59 @@ pub fn upsert_scheduled_run(
 }
 
 /**
+ 启动期扫描：将所有 config 下处于非终态（Pending/FetchingList/Filtering/Writing）的 ScheduledRun
+ 修正为 Interrupted（中断停止）。这些 run 是上次应用进程异常退出时遗留的，重启后必然不会再被推进。
+
+ 参数:
+ - `config_ids`: 全部待扫描的 config id 列表。
+
+ 返回:
+ - `Ok(usize)`: 被修正的 run 条数。
+ - `Err(String)`: 任意持久化失败。
+*/
+pub fn mark_unfinished_runs_as_interrupted(config_ids: &[String]) -> Result<usize, String> {
+    use crate::scheduled_fetcher::RunStatus;
+    let mut total_fixed = 0usize;
+    for cid in config_ids {
+        let mut runs = match load_scheduled_runs(cid) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("mark_unfinished_runs_as_interrupted: 读取 {} 失败 {}", cid, e);
+                continue;
+            }
+        };
+        let mut changed = false;
+        for r in runs.iter_mut() {
+            let unfinished = matches!(
+                r.status,
+                RunStatus::Pending
+                    | RunStatus::FetchingList
+                    | RunStatus::Filtering
+                    | RunStatus::Writing
+            );
+            if unfinished {
+                r.status = RunStatus::Interrupted;
+                if r.finished_at.is_none() {
+                    r.finished_at = Some(chrono::Utc::now());
+                }
+                if r.error_message.is_none() {
+                    r.error_message = Some("应用退出导致任务未完成".to_string());
+                }
+                r.progress_message = "已中断".to_string();
+                total_fixed += 1;
+                changed = true;
+            }
+        }
+        if changed {
+            if let Err(e) = persist_scheduled_runs(cid, runs) {
+                log::warn!("mark_unfinished_runs_as_interrupted: 写入 {} 失败 {}", cid, e);
+            }
+        }
+    }
+    Ok(total_fixed)
+}
+
+/**
  仅替换 `app_data.json` 中的 configs / tasks 字段，保留 usage_records 等，
  不触发 sync_config_store / scheduler.reconcile_after_save。
 
@@ -956,6 +1009,81 @@ pub fn save_configs(
     });
 
     Ok(())
+}
+
+/**
+ 读取当前应用全局设置（含飞书 Webhook URL）。
+
+ 返回值:
+   - Ok(AppSettings): 当前内存中的设置快照。
+*/
+#[tauri::command]
+pub fn get_app_settings(state: tauri::State<crate::AppState>) -> Result<AppSettings, String> {
+    state
+        .app_settings
+        .read()
+        .map(|g| g.clone())
+        .map_err(|e| format!("读取 app_settings 失败: {}", e))
+}
+
+/**
+ 保存应用全局设置：写入 app_data.json 中的 app_settings 字段，并热更新内存状态。
+
+ 参数:
+   - settings: 待保存的 AppSettings；feishu_webhook_url 允许为空字符串（表示清空配置）。
+
+ 异常:
+   - 校验失败（非空且不以 https://open.feishu.cn/ 开头）返回错误。
+*/
+#[tauri::command]
+pub fn save_app_settings(
+    _app: tauri::AppHandle,
+    state: tauri::State<crate::AppState>,
+    settings: AppSettings,
+) -> Result<(), String> {
+    let trimmed = settings.feishu_webhook_url.trim().to_string();
+    if !trimmed.is_empty() && !trimmed.starts_with("https://open.feishu.cn/") {
+        return Err("Webhook URL 必须以 https://open.feishu.cn/ 开头".to_string());
+    }
+    let normalized = AppSettings {
+        feishu_webhook_url: trimmed,
+    };
+    let data_file = resolve_app_data_file_path()?;
+    write_app_data_settings_only(&data_file, &normalized)?;
+    if let Ok(mut s) = state.app_settings.write() {
+        *s = normalized.clone();
+    }
+    if normalized.feishu_webhook_url.is_empty() {
+        info!("已清空飞书 Webhook 配置");
+    } else {
+        info!(
+            "已保存飞书 Webhook 配置: {}",
+            crate::notifier::redact_webhook(&normalized.feishu_webhook_url)
+        );
+    }
+    Ok(())
+}
+
+/**
+ 发送一条飞书测试消息：用于 UI 「测试」按钮，错误信息原样回传给前端。
+
+ 异常:
+   - Webhook 未配置或 send_feishu_text 重试后仍失败时返回错误。
+*/
+#[tauri::command]
+pub async fn send_feishu_test_message(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let webhook = state
+        .app_settings
+        .read()
+        .map(|g| g.feishu_webhook_url.clone())
+        .map_err(|e| format!("读取 app_settings 失败: {}", e))?;
+    if webhook.is_empty() {
+        return Err("尚未配置飞书 Webhook URL".to_string());
+    }
+    let content = "🤖 VideoMixer Pro · 飞书通知测试\n\n如果你看到这条消息，说明 Webhook 配置正确。".to_string();
+    crate::notifier::send_feishu_text(&webhook, &content).await
 }
 
 #[cfg(test)]

@@ -86,6 +86,8 @@ pub enum RunStatus {
     Writing,
     Success,
     Failed,
+    /// 应用退出导致 run 未走完终态：启动期由 storage::mark_unfinished_runs_as_interrupted 修正。
+    Interrupted,
 }
 
 /// 单次执行的运行记录。
@@ -397,11 +399,43 @@ pub fn resolve_csv_path_with_suffix(output_dir: &Path, filename: &str) -> PathBu
  异常:
  - 文件系统错误时返回 `Err`。
 */
+/**
+ 将值包裹为 Excel 公式字符串：`="value"`，内部双引号转义为 `""`。
+
+ 用于把 video_id / 数字 / 时间等字段强制锁定为文本，避免 Excel/WPS 自动识别为数值导致科学计数 / 丢精度。
+
+ 参数:
+ - `value`: 原始字段值。
+
+ 返回:
+ - `String`: 形如 `="123456"` 的公式字符串。
+*/
+fn excel_text_formula(value: &str) -> String {
+    // Excel 公式中的双引号需要写成两个双引号
+    let escaped = value.replace('"', "\"\"");
+    format!("=\"{}\"", escaped)
+}
+
+/**
+ 将一组条目写入新的 CSV 文件（UTF-8 BOM + CRLF + 公式字段锚定为文本）。
+
+ 参数:
+ - `output_dir`: 输出目录。
+ - `csv_filename`: 文件名（含 .csv 扩展名）。
+ - `entries`: 待写入条目（已是最终顺序）。
+ - `fetched_at`: 本次执行起始时间（本地时区）。
+ - `follower_map`: uploader → 粉丝数字符串（缺失则该行该列留空）。
+
+ 返回:
+ - `Ok(PathBuf)`: 实际写入的 CSV 路径。
+ - `Err(String)`: 创建目录、打开文件或写入失败。
+*/
 pub fn write_csv_new_file(
     output_dir: &Path,
     csv_filename: &str,
     entries: &[TikTokEntry],
     fetched_at: DateTime<Local>,
+    follower_map: &std::collections::HashMap<String, String>,
 ) -> Result<PathBuf, String> {
     fs::create_dir_all(output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
     let path = resolve_csv_path_with_suffix(output_dir, csv_filename);
@@ -424,12 +458,13 @@ pub fn write_csv_new_file(
         .write_record([
             "video_id",
             "publish_time",
-            "like_count",
-            "comment_count",
-            "repost_count",
-            "save_count",
-            "view_count",
+            "点赞数",
+            "评论数",
+            "转发数",
+            "收藏数",
+            "播放数",
             "uploader",
+            "作者粉丝数",
             "video_url",
             "fetched_at",
         ])
@@ -443,19 +478,30 @@ pub fn write_csv_new_file(
             "https://www.tiktok.com/@{}/video/{}",
             entry.uploader, entry.id
         );
+        let follower_raw = follower_map
+            .get(&entry.uploader)
+            .cloned()
+            .unwrap_or_default();
+        // 所有字段统一用 ="..." 公式包裹，强制 Excel 识别为文本；空字符串保持空（不包公式）
+        let row = [
+            excel_text_formula(&entry.id),
+            excel_text_formula(&publish_time),
+            excel_text_formula(&entry.like_count.to_string()),
+            excel_text_formula(&entry.comment_count.to_string()),
+            excel_text_formula(&entry.repost_count.to_string()),
+            excel_text_formula(&entry.save_count.to_string()),
+            excel_text_formula(&entry.view_count.to_string()),
+            excel_text_formula(&entry.uploader),
+            if follower_raw.is_empty() {
+                String::new()
+            } else {
+                excel_text_formula(&follower_raw)
+            },
+            excel_text_formula(&video_url),
+            excel_text_formula(&fetched_at_str),
+        ];
         writer
-            .write_record([
-                entry.id.as_str(),
-                publish_time.as_str(),
-                entry.like_count.to_string().as_str(),
-                entry.comment_count.to_string().as_str(),
-                entry.repost_count.to_string().as_str(),
-                entry.save_count.to_string().as_str(),
-                entry.view_count.to_string().as_str(),
-                entry.uploader.as_str(),
-                video_url.as_str(),
-                fetched_at_str.as_str(),
-            ])
+            .write_record(&row)
             .map_err(|e| format!("写入 CSV 数据行失败: {}", e))?;
     }
     writer.flush().map_err(|e| format!("CSV flush 失败: {}", e))?;
@@ -590,7 +636,31 @@ pub fn check_yt_dlp_health() -> bool {
     command.arg("--version").stdout(Stdio::piped()).stderr(Stdio::piped());
 
     match command.output() {
-        Ok(output) => output.status.success(),
+        Ok(output) => {
+            // 校验：必须 exit 0 + stdout 形如 `YYYY.MM.DD` 版本号开头，
+            // 防止 0 字节占位文件 / 错误 sidecar 也被识别为健康。
+            if !output.status.success() {
+                return false;
+            }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let first_line = stdout.lines().next().unwrap_or("").trim();
+            // yt-dlp --version 输出形如 "2026.03.17"
+            let looks_like_version = first_line
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+                && first_line.contains('.')
+                && first_line.len() >= 8;
+            if !looks_like_version {
+                log::warn!(
+                    "yt-dlp health check 拒绝：--version 输出非版本号格式 ({:?})",
+                    first_line
+                );
+                return false;
+            }
+            true
+        }
         Err(_) => false,
     }
 }
@@ -651,6 +721,85 @@ pub fn exec_yt_dlp(
         YtDlpErrorKind::Other,
         format!("yt-dlp 退出码非 0：{}", stderr.lines().last().unwrap_or("")),
     ))
+}
+
+/**
+ 通过抓取 TikTok 作者主页 HTML 中的 `"followerCount":<digits>` 字段获取粉丝数。
+
+ 实现说明：
+ - yt-dlp 的 tiktok:user 提取器（v2026.03.17）playlist 元数据中**不包含** `channel_follower_count`，
+   `--flat-playlist` 路径下每条 entry 的该字段也是 NA，故弃用 yt-dlp 改走主页 HTML 抓取。
+ - 主页 URL：`https://www.tiktok.com/@<uploader>`，HTML 中嵌有 `"followerCount":2857` 形式的 JSON 片段，
+   正则提取首个匹配即为该作者的粉丝数。
+ - 网络失败 / 用户不存在 / 字段缺失 时统一返回 `Ok("")`，由调用方写入空粉丝列，不阻塞主流程。
+
+ 参数:
+ - `uploader`: 不带 `@` 前缀的 TikTok 用户名，如 `linda.noutch`。
+ - `_iid`: 兼容旧签名保留，HTML 抓取无需 IID（TikTok 主页公开可读）。
+
+ 返回:
+ - `Ok(String)`: 粉丝数字符串（如 `"2857"`），缺失时为空串。
+ - `Err(YtDlpError)`: 仅在 reqwest 客户端构建失败时返回，正常网络错误统一吞为空串。
+*/
+pub fn fetch_uploader_follower_count(
+    uploader: &str,
+    _iid: &str,
+) -> Result<String, YtDlpError> {
+    let target_url = format!("https://www.tiktok.com/@{}", uploader);
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+             AppleWebKit/537.36 (KHTML, like Gecko) \
+             Chrome/124.0 Safari/537.36",
+        )
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(YtDlpError::new(
+                YtDlpErrorKind::Other,
+                format!("reqwest 客户端构建失败: {}", e),
+            ));
+        }
+    };
+
+    let resp = match client.get(&target_url).send() {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("抓取作者主页失败 @{}: {}", uploader, e);
+            return Ok(String::new());
+        }
+    };
+    if !resp.status().is_success() {
+        log::warn!(
+            "抓取作者主页非 2xx @{}: status={}",
+            uploader,
+            resp.status()
+        );
+        return Ok(String::new());
+    }
+
+    let html = match resp.text() {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("读取主页 body 失败 @{}: {}", uploader, e);
+            return Ok(String::new());
+        }
+    };
+
+    // 主页 HTML 中嵌有形如 `"followerCount":2857` 的 JSON 片段
+    static FOLLOWER_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = FOLLOWER_RE.get_or_init(|| regex::Regex::new(r#""followerCount":(\d+)"#).unwrap());
+
+    if let Some(cap) = re.captures(&html) {
+        if let Some(m) = cap.get(1) {
+            return Ok(m.as_str().to_string());
+        }
+    }
+    log::warn!("主页 HTML 未匹配到 followerCount @{}", uploader);
+    Ok(String::new())
 }
 
 /**
@@ -751,6 +900,48 @@ where
     let matched = filter_in_window_and_truncate(deduped, window_secs, now_ts, fetcher.num_meet_condition);
     run.matched_in_window = matched.len() as u32;
 
+    // Stage 2.5: 按 uploader 去重并串行拉作者粉丝数（错峰 200ms，单作者失败留空，不阻塞）
+    let unique_uploaders: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut list = Vec::new();
+        for e in &matched {
+            if !e.uploader.is_empty() && seen.insert(e.uploader.clone()) {
+                list.push(e.uploader.clone());
+            }
+        }
+        list
+    };
+    let mut follower_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let total_uploaders = unique_uploaders.len();
+    for (idx, uploader) in unique_uploaders.iter().enumerate() {
+        run.progress_message = format!(
+            "正在拉取作者粉丝数（{}/{}）：@{}",
+            idx + 1,
+            total_uploaders,
+            uploader
+        );
+        emit_update(&run);
+        match fetch_uploader_follower_count(uploader, &fetcher.tiktok_iid) {
+            Ok(count) => {
+                if !count.is_empty() {
+                    follower_map.insert(uploader.clone(), count);
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "拉取作者粉丝数失败 uploader=@{} err={}",
+                    uploader,
+                    err.message
+                );
+            }
+        }
+        // 作者间错峰 200ms（最后一个作者后无需 sleep）
+        if idx + 1 < total_uploaders {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+
     // Stage 3: CSV
     run.status = RunStatus::Writing;
     run.progress_message = format!("正在写入 CSV（命中 {} 条）", matched.len());
@@ -758,7 +949,7 @@ where
 
     let filename = build_csv_filename(run_index, started_at_local);
     let output_dir = std::path::Path::new(&fetcher.output_dir);
-    match write_csv_new_file(output_dir, &filename, &matched, started_at_local) {
+    match write_csv_new_file(output_dir, &filename, &matched, started_at_local, &follower_map) {
         Ok(path) => {
             run.csv_path = Some(path.to_string_lossy().to_string());
             run.new_appended = matched.len() as u32;
@@ -1003,20 +1194,36 @@ mod tests {
             .single()
             .unwrap();
         let filename = build_csv_filename(1, started_at);
-        let path = write_csv_new_file(&dir, &filename, &entries, started_at).unwrap();
+        let mut follower_map = std::collections::HashMap::new();
+        follower_map.insert("user_a".to_string(), "12345".to_string());
+        let path = write_csv_new_file(&dir, &filename, &entries, started_at, &follower_map).unwrap();
 
         let bytes = fs::read(&path).unwrap();
         assert_eq!(&bytes[..3], &[0xEF, 0xBB, 0xBF], "应有 UTF-8 BOM");
         let body = String::from_utf8(bytes[3..].to_vec()).unwrap();
-        assert!(body.starts_with("video_id,publish_time,"));
+        // 新表头：包含中文统计列与「作者粉丝数」
+        assert!(
+            body.starts_with("video_id,publish_time,点赞数,评论数,转发数,收藏数,播放数,uploader,作者粉丝数,video_url,fetched_at"),
+            "表头应使用新中文列名 + 作者粉丝数；实际：{}",
+            body.lines().next().unwrap_or("")
+        );
         assert!(body.contains("\r\n"), "应使用 CRLF 行尾");
-        assert!(body.contains("vid1"));
-        // 包含逗号的字段必须加引号
-        assert!(body.contains("\"vid,2\""));
-        // fetched_at 写入了正确格式
-        assert!(body.contains("2026-05-31 15:30:12"));
-        // video_url 拼装规则
-        assert!(body.contains("https://www.tiktok.com/@user_a/video/vid1"));
+        // 字段统一用 ="..." 公式包裹（含 = 与 "，会被 csv crate 整体加 quote、内部 " 转义为 ""）
+        // 即原始公式 ="vid1" → CSV 字面写为 "=""vid1"""
+        assert!(body.contains("\"=\"\"vid1\"\"\""), "video_id 应被 Excel 文本公式包裹");
+        assert!(body.contains("\"=\"\"100\"\"\""), "数值列应被 Excel 文本公式包裹");
+        // 作者粉丝数：user_a 命中 12345
+        assert!(body.contains("\"=\"\"12345\"\"\""), "user_a 的粉丝数应被写入");
+        // fetched_at 写入正确格式（被公式包裹）
+        assert!(body.contains("\"=\"\"2026-05-31 15:30:12\"\"\""));
+        // video_url 拼装规则（被公式包裹）
+        assert!(body.contains("\"=\"\"https://www.tiktok.com/@user_a/video/vid1\"\"\""));
+        // 内部双引号 user_"b" 在公式内转义为 ""，再被 csv crate 二次 quote
+        // 公式字面为 ="user_""b""" → csv 写为 "=""user_""""b"""""""
+        assert!(
+            body.contains("\"=\"\"user_\"\"\"\"b\"\"\"\"\"\"\""),
+            "uploader 内部双引号应被正确转义"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }

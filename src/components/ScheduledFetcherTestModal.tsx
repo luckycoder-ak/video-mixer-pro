@@ -16,6 +16,7 @@ interface Props {
  */
 export const ScheduledFetcherTestModal: React.FC<Props> = ({ fetcher, onClose }) => {
   const [run, setRun] = useState<ScheduledRun | null>(null);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
@@ -23,6 +24,7 @@ export const ScheduledFetcherTestModal: React.FC<Props> = ({ fetcher, onClose })
 
     const setup = async () => {
       try {
+        // 先订阅事件，再触发后端命令，避免 listener 错过早期 emit
         unlisten = await listen<ScheduledRun>('scheduled-run-update', (event) => {
           const r = event.payload;
           if (r.fetcher_id !== fetcher.id) return;
@@ -33,6 +35,14 @@ export const ScheduledFetcherTestModal: React.FC<Props> = ({ fetcher, onClose })
         });
       } catch (e) {
         console.error('监听 scheduled-run-update 失败', e);
+      }
+      // listener 就绪后再触发后端命令
+      try {
+        await invoke<string>('trigger_scheduled_fetcher_test', { fetcherId: fetcher.id });
+      } catch (e) {
+        if (!cancelled) {
+          setTriggerError(String(e));
+        }
       }
     };
     setup();
@@ -58,12 +68,18 @@ export const ScheduledFetcherTestModal: React.FC<Props> = ({ fetcher, onClose })
         return '✅ 完成';
       case 'failed':
         return '❌ 失败';
+      case 'interrupted':
+        return '⏹ 中断停止';
       default:
-        return '等待中...';
+        return triggerError ? '❌ 触发失败' : '正在启动…';
     }
   };
 
-  const isFinal = run?.status === 'success' || run?.status === 'failed';
+  const isFinal =
+    run?.status === 'success' ||
+    run?.status === 'failed' ||
+    run?.status === 'interrupted' ||
+    triggerError !== null;
 
   const handleOpenCsv = async () => {
     if (!run?.csv_path) return;
@@ -126,6 +142,12 @@ export const ScheduledFetcherTestModal: React.FC<Props> = ({ fetcher, onClose })
           {run?.error_message && (
             <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
               {run.error_message}
+            </div>
+          )}
+
+          {triggerError && !run && (
+            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              {triggerError}
             </div>
           )}
 

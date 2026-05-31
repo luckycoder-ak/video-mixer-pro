@@ -7,7 +7,7 @@
  - 重启后 run_index 计数清零；scheduled_runs.json 中的历史记录保留。
 */
 
-use chrono::{Duration as ChronoDuration, Local, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
 use log::{info, warn};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -42,6 +42,9 @@ pub struct Scheduler {
     tasks: AsyncMutex<HashMap<String, JoinHandle<()>>>,
     /// fetcher_id → 进程内累计执行序号（重启清零）。
     run_counters: AsyncMutex<HashMap<String, Arc<AtomicU32>>>,
+    /// fetcher_id → 上一次执行的时间戳；跨 register/cancel 保留，避免 reconcile 重新 register
+    /// 导致 last_run_at 丢失而立即重跑（重启后清零，按"首次立即执行"语义处理）。
+    last_run_at: AsyncMutex<HashMap<String, DateTime<Utc>>>,
     /// 串行锁：保证同一时刻只有一个 fetcher 在执行 yt-dlp。
     run_lock: Arc<AsyncMutex<()>>,
 }
@@ -57,6 +60,7 @@ impl Scheduler {
         Arc::new(Self {
             tasks: AsyncMutex::new(HashMap::new()),
             run_counters: AsyncMutex::new(HashMap::new()),
+            last_run_at: AsyncMutex::new(HashMap::new()),
             run_lock: Arc::new(AsyncMutex::new(())),
         })
     }
@@ -99,7 +103,16 @@ impl Scheduler {
         let fetcher_id = fetcher.id.clone();
 
         let handle = tokio::spawn(async move {
-            scheduler_loop(fetcher, config_id, config_name, app_handle, counter, run_lock).await;
+            scheduler_loop(
+                fetcher,
+                config_id,
+                config_name,
+                app_handle,
+                counter,
+                run_lock,
+                scheduler,
+            )
+            .await;
         });
 
         let mut tasks = self.tasks.lock().await;
@@ -328,6 +341,18 @@ impl Scheduler {
             // 自动停用：取消调度循环
             self.cancel(&updated.id).await;
         }
+
+        // P4 飞书通知：定时任务终态触发（Success/Failed/IidInvalid 等全部通知）
+        let extra = if should_emit_paused {
+            crate::notifier::NotificationExtra::Paused
+        } else if should_emit_cooldown {
+            crate::notifier::NotificationExtra::CooldownTriggered {
+                until: updated.cooldown_until.unwrap_or_else(Utc::now),
+            }
+        } else {
+            crate::notifier::NotificationExtra::Normal
+        };
+        crate::notifier::notify_scheduled_run_async(app_handle, &outcome.run, extra);
     }
 }
 
@@ -345,8 +370,15 @@ async fn scheduler_loop(
     app_handle: AppHandle,
     counter: Arc<AtomicU32>,
     run_lock: Arc<AsyncMutex<()>>,
+    scheduler: Arc<Scheduler>,
 ) {
-    let mut last_run_at: Option<chrono::DateTime<Utc>> = None;
+    // 从 Scheduler 持久态加载该 fetcher 上次执行的时间；首次注册（启动期）为 None，
+    // 此时按"启动后立即执行一次"语义；reconcile 重新 register 时则恢复历史时间，
+    // 避免重新计时导致重复触发。
+    let mut last_run_at: Option<chrono::DateTime<Utc>> = {
+        let map = scheduler.last_run_at.lock().await;
+        map.get(&initial_fetcher.id).cloned()
+    };
 
     loop {
         // 总是从最新的 AppState 读取配置；如不存在则退出循环
@@ -405,14 +437,19 @@ async fn scheduler_loop(
         .await;
 
         last_run_at = Some(Utc::now());
+        // 同步回写 Scheduler 持久态，避免 reconcile 重新 register 导致 last_run_at 丢失
+        {
+            let mut map = scheduler.last_run_at.lock().await;
+            map.insert(fetcher.id.clone(), last_run_at.unwrap());
+        }
         // 释放锁后再做持久化与状态机更新
         drop(_guard);
 
-        let scheduler = match app_handle.try_state::<crate::AppState>() {
+        let scheduler_for_post = match app_handle.try_state::<crate::AppState>() {
             Some(s) => s.scheduler.clone(),
             None => return,
         };
-        scheduler
+        scheduler_for_post
             .apply_post_run(&fetcher, &config_id, outcome, &app_handle)
             .await;
     }

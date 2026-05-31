@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ScheduledFetcher } from '../types';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { ScheduledFetcher, ScheduledRun } from '../types';
 import { ScheduledFetcherForm } from './ScheduledFetcherForm';
 import { ScheduledFetcherTestModal } from './ScheduledFetcherTestModal';
 
@@ -21,6 +22,59 @@ export const ScheduledFetcherCard: React.FC<Props> = ({ configName, fetchers, on
   const [editing, setEditing] = useState<ScheduledFetcher | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [testingFetcher, setTestingFetcher] = useState<ScheduledFetcher | null>(null);
+  /** fetcher_id → 最近一次成功/失败执行的 started_at（ISO 字符串） */
+  const [lastRunMap, setLastRunMap] = useState<Record<string, string>>({});
+
+  /** 启动期回填：拉所有 run 取每个 fetcher 的最新一条 started_at */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const runs = await invoke<ScheduledRun[]>('list_scheduled_runs', { configIds: null });
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const r of runs) {
+          // list_scheduled_runs 已按 started_at 倒序，首次出现即为最新
+          if (!map[r.fetcher_id]) {
+            map[r.fetcher_id] = r.started_at;
+          }
+        }
+        setLastRunMap(map);
+      } catch (e) {
+        console.warn('回填 scheduled runs 失败', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** 实时订阅：每条 run 终态/进度推送都会刷新「上次执行时间」 */
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        unlisten = await listen<ScheduledRun>('scheduled-run-update', (event) => {
+          if (cancelled) return;
+          const r = event.payload;
+          setLastRunMap((prev) => {
+            const cur = prev[r.fetcher_id];
+            if (cur && new Date(cur).getTime() >= new Date(r.started_at).getTime()) {
+              return prev;
+            }
+            return { ...prev, [r.fetcher_id]: r.started_at };
+          });
+        });
+      } catch (e) {
+        console.error('监听 scheduled-run-update 失败', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   /** 计算下一个可用的 CronFetcher #N 序号（删除不回收） */
   const nextIndex = useMemo(() => {
@@ -78,14 +132,9 @@ export const ScheduledFetcherCard: React.FC<Props> = ({ configName, fetchers, on
     setEditing(null);
   };
 
-  const handleTest = async (fetcher: ScheduledFetcher) => {
-    try {
-      // 调用后端命令触发 manual run（健康检查 + run_now）
-      await invoke<string>('trigger_scheduled_fetcher_test', { fetcherId: fetcher.id });
-      setTestingFetcher(fetcher);
-    } catch (e) {
-      alert(`测试失败：${e}`);
-    }
+  const handleTest = (fetcher: ScheduledFetcher) => {
+    // 仅打开弹窗；invoke 调用由 TestModal 在订阅事件后再触发，避免 listener 错过 emit
+    setTestingFetcher(fetcher);
   };
 
   /** 渲染状态徽章（cooldown / disabled / normal） */
@@ -132,6 +181,38 @@ export const ScheduledFetcherCard: React.FC<Props> = ({ configName, fetchers, on
     if (f.window_days > 0) parts.push(`${f.window_days} 天`);
     if (f.window_hours > 0) parts.push(`${f.window_hours} 小时`);
     return parts.length > 0 ? `最近 ${parts.join(' ')}` : '最近 1 小时';
+  };
+
+  /** 格式化时间为 2026/6/1 00:56:23（与需求示例一致：年用 4 位、月日不补零、HH:mm:ss 补零） */
+  const formatRunTime = (iso?: string | null): string => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '-';
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${y}/${m}/${day} ${hh}:${mm}:${ss}`;
+  };
+
+  /** 计算下次执行时间 = 上次执行时间 + interval；冷却中则取冷却结束与下次执行的较大值 */
+  const computeNextRun = (f: ScheduledFetcher): string | null => {
+    const last = lastRunMap[f.id];
+    if (!last) return null;
+    const intervalMs = Math.max(
+      ((f.interval_days || 0) * 86400 + (f.interval_hours || 0) * 3600) * 1000,
+      3600 * 1000, // 后端 spec：最小 1 小时
+    );
+    let nextTs = new Date(last).getTime() + intervalMs;
+    if (f.cooldown_until) {
+      const cd = new Date(f.cooldown_until).getTime();
+      if (!Number.isNaN(cd) && cd > nextTs) {
+        nextTs = cd;
+      }
+    }
+    return new Date(nextTs).toISOString();
   };
 
   if (showForm) {
@@ -191,6 +272,12 @@ export const ScheduledFetcherCard: React.FC<Props> = ({ configName, fetchers, on
                 </div>
                 <div className="text-xs text-gray-400 mt-0.5">
                   {formatInterval(f)} · {formatWindow(f)} · 拉取 {f.max_fetch_num} / 取 {f.num_meet_condition}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap gap-x-3">
+                  <span>本次执行：{formatRunTime(lastRunMap[f.id])}</span>
+                  <span>
+                    下次执行：{f.enabled ? formatRunTime(computeNextRun(f)) : '-（已停用）'}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">

@@ -38,8 +38,8 @@ jobs:
           workspaces: src-tauri -> target
 
       # 下载 FFmpeg 官方静态构建并按 Tauri sidecar 命名规范放入 binaries/
-      # 这样 ffmpeg.exe 会被打包进最终 .msi/.exe 安装包，用户无需单独安装
-      - name: Download & bundle ffmpeg sidecar
+      # 同时拷贝 ffmpeg.exe 与 ffprobe.exe，使最终 .msi/.exe 安装包零依赖即装即用
+      - name: Download & bundle ffmpeg + ffprobe sidecar
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -51,10 +51,14 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $extract -Force
           $ffmpegExe = (Get-ChildItem -Path $extract -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1).FullName
           if (-not $ffmpegExe) { throw 'ffmpeg.exe not found in archive' }
+          $ffprobeExe = (Get-ChildItem -Path $extract -Recurse -Filter 'ffprobe.exe' | Select-Object -First 1).FullName
+          if (-not $ffprobeExe) { throw 'ffprobe.exe not found in archive' }
           New-Item -ItemType Directory -Force -Path 'src-tauri/binaries' | Out-Null
           # Tauri sidecar 命名要求：<name>-<target-triple>.exe
           Copy-Item $ffmpegExe 'src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe'
+          Copy-Item $ffprobeExe 'src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe'
           Write-Host "Sidecar ffmpeg ready: src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe"
+          Write-Host "Sidecar ffprobe ready: src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe"
 
       # 下载 yt-dlp.exe 并按 Tauri sidecar 命名规范放入 binaries/
       # 用于 CronFetcher 定时元数据采集任务
@@ -75,8 +79,63 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # 构建前自检：确保 sidecar 三件套（ffmpeg / ffprobe / yt-dlp）都已就位
+      # 任意缺失都立即失败，避免产生缺依赖的"假成功"安装包
+      - name: Verify sidecar binaries before build
+        shell: pwsh
+        run: |
+          $required = @(
+            'src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe',
+            'src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe',
+            'src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe'
+          )
+          $missing = @()
+          foreach ($p in $required) {
+            if (-not (Test-Path $p)) {
+              $missing += $p
+            } else {
+              $size = (Get-Item $p).Length
+              if ($size -lt 102400) {
+                Write-Error "Sidecar 文件过小（疑似占位/损坏）: $p ($size bytes)"
+              } else {
+                Write-Host "OK: $p ($([math]::Round($size/1MB, 2)) MB)"
+              }
+            }
+          }
+          if ($missing.Count -gt 0) {
+            throw "缺失 sidecar 文件: $($missing -join ', ')"
+          }
+
       - name: Build Tauri (Windows .exe + .msi + .nsis)
         run: npm run tauri build -- --target x86_64-pc-windows-msvc
+
+      # 构建后自检：确保最终产物里真的捆绑了 sidecar（NSIS 与 MSI 内的资源目录）
+      - name: Verify sidecar binaries are bundled into installer
+        shell: pwsh
+        run: |
+          $rel = 'src-tauri/target/x86_64-pc-windows-msvc/release'
+          $needed = @('ffmpeg.exe', 'ffprobe.exe', 'yt-dlp.exe')
+          # Tauri 2.0 在 release/ 目录下会同时输出 sidecar 二进制副本（剥离 triple 后缀），
+          # 这是安装包内的真实拷贝来源；任何一个缺失说明 externalBin 配置未生效
+          foreach ($name in $needed) {
+            $candidates = Get-ChildItem -Path $rel -Filter $name -Recurse -ErrorAction SilentlyContinue
+            if (-not $candidates) {
+              # 退而求其次：找 <name>-<triple>.exe 形式
+              $triple = Get-ChildItem -Path $rel -Filter "$($name -replace '\.exe$','')*x86_64-pc-windows-msvc.exe" -Recurse -ErrorAction SilentlyContinue
+              if (-not $triple) {
+                throw "构建产物中未发现 sidecar：$name"
+              }
+              Write-Host "OK (triple): $($triple[0].FullName)"
+            } else {
+              Write-Host "OK: $($candidates[0].FullName)"
+            }
+          }
+          # 同时确保 NSIS / MSI 安装包真实存在
+          $installers = Get-ChildItem -Path "$rel/bundle" -Recurse -Include *.msi, *.exe -ErrorAction SilentlyContinue
+          if (-not $installers) { throw '未找到任何 .msi / .exe 安装包' }
+          foreach ($i in $installers) {
+            Write-Host "Installer: $($i.FullName) ($([math]::Round($i.Length/1MB, 2)) MB)"
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

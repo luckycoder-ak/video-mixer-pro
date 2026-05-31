@@ -64,6 +64,14 @@ VideoMixer Pro 是一个面向短视频创作者的跨平台桌面客户端软�
 
 ## 最近修改记录
 
+### v1.0.7
+1. ✅ 新增飞书自定义机器人 Webhook 通知能力（合成任务 + 定时任务终态）
+2. ✅ 新增「高级设置」Tab：Webhook URL 配置 + 测试发送按钮
+3. ✅ AppData 新增 `app_settings` 字段（向后兼容，缺失走 Default）
+4. ✅ 通知模块 `notifier.rs`：reqwest 0.12 + rustls-tls，2 次指数退避（5s/15s）
+5. ✅ 失败仅 `log::warn` 不阻塞主流程；webhook 未配置时静默跳过
+6. ✅ Webhook 持久化使用 `write_app_data_settings_only`，避免触发 scheduler reconcile
+
 ### v1.0.6
 1. ✅ 新增定时元数据采集功能（Scheduled TikTok Fetcher）
 2. ✅ 集成 yt-dlp sidecar（macOS / Windows，CI 自动下载）
@@ -90,8 +98,10 @@ VideoMixer Pro 是一个面向短视频创作者的跨平台桌面客户端软�
 | 视频处理核心 | [video_processor.rs](file:///workspace/video-mixer-pro/src-tauri/src/video_processor.rs) |
 | 定时采集逻辑 | [scheduled_fetcher.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduled_fetcher.rs) |
 | 调度器与命令 | [scheduler.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduler.rs) |
+| 飞书通知模块 | [notifier.rs](file:///workspace/video-mixer-pro/src-tauri/src/notifier.rs) |
 | 前端主组件 | [App.tsx](file:///workspace/video-mixer-pro/src/App.tsx) |
 | 定时任务卡片 | [ScheduledFetcherCard.tsx](file:///workspace/video-mixer-pro/src/components/ScheduledFetcherCard.tsx) |
 | 定时任务执行列表 | [ScheduledRunsList.tsx](file:///workspace/video-mixer-pro/src/components/ScheduledRunsList.tsx) |
+| 高级设置面板 | [AdvancedSettings.tsx](file:///workspace/video-mixer-pro/src/components/AdvancedSettings.tsx) |
 | 类型定义 | [types.ts](file:///workspace/video-mixer-pro/src/types.ts) |
 | CI/CD 配置 | [build-windows.yml](file:///workspace/video-mixer-pro/.github/workflows/build-windows.yml) |

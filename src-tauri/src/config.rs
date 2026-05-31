@@ -5,6 +5,7 @@ use crate::AppState;
 use crate::scheduled_fetcher::ScheduledFetcher;
 use log::info;
 use crate::video_processor::apply_hidden_process_startup;
+use crate::video_processor::find_ffprobe_executable;
 
 fn default_transition_duration() -> f32 {
     0.2
@@ -226,7 +227,7 @@ pub fn delete_config(state: tauri::State<AppState>, id: String) -> Result<(), St
 
 #[tauri::command]
 pub fn get_audio_duration(audio_path: String) -> Result<f32, String> {
-    let mut command = std::process::Command::new("ffprobe");
+    let mut command = std::process::Command::new(find_ffprobe_executable());
     apply_hidden_process_startup(&mut command);
     let output = command
         .args([

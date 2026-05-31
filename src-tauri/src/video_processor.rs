@@ -57,6 +57,63 @@ fn find_ffmpeg_executable() -> String {
     }).clone()
 }
 
+/**
+ 解析 ffprobe 可执行文件路径。
+
+ 解析顺序：
+ 1. 与当前可执行文件同目录的 sidecar（打包模式：`ffprobe-<target-triple>(.exe)`）
+ 2. macOS 开发环境的 Homebrew `ffmpeg-full` 路径
+ 3. 系统 PATH 中的 `ffprobe`
+
+ 返回:
+ - `String`: 用于 `Command::new(...)` 的可执行文件路径或文件名。
+*/
+pub fn find_ffprobe_executable() -> String {
+    static FFPROBE_PATH: OnceLock<String> = OnceLock::new();
+
+    FFPROBE_PATH.get_or_init(|| {
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                #[cfg(target_os = "windows")]
+                let sidecar_names: &[&str] = &["ffprobe.exe", "ffprobe-x86_64-pc-windows-msvc.exe"];
+                #[cfg(target_os = "macos")]
+                let sidecar_names: &[&str] = &[
+                    "ffprobe",
+                    "ffprobe-aarch64-apple-darwin",
+                    "ffprobe-x86_64-apple-darwin",
+                ];
+                #[cfg(target_os = "linux")]
+                let sidecar_names: &[&str] = &["ffprobe", "ffprobe-x86_64-unknown-linux-gnu"];
+
+                for name in sidecar_names {
+                    let candidate = exe_dir.join(name);
+                    if candidate.exists() {
+                        info!("使用捆绑的 ffprobe sidecar: {}", candidate.display());
+                        return candidate.to_string_lossy().to_string();
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let ffprobe_full_paths = vec![
+                "/usr/local/opt/ffmpeg-full/bin/ffprobe",
+                "/opt/homebrew/opt/ffmpeg-full/bin/ffprobe",
+            ];
+
+            for path in ffprobe_full_paths {
+                if std::path::Path::new(path).exists() {
+                    info!("找到 ffprobe-full: {}", path);
+                    return path.to_string();
+                }
+            }
+        }
+
+        "ffprobe".to_string()
+    }).clone()
+}
+
 use log::{error, info, warn};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -790,7 +847,7 @@ fn detect_best_encoder() -> EncoderConfig {
     static ENCODER: OnceLock<EncoderConfig> = OnceLock::new();
 
     ENCODER.get_or_init(|| {
-        let mut command = Command::new("ffmpeg");
+        let mut command = Command::new(find_ffmpeg_executable());
         apply_hidden_process_startup(&mut command);
         let output = command.args(["-hide_banner", "-encoders"]).output();
 
@@ -1339,7 +1396,7 @@ impl ExitStatusExt for std::process::ExitStatus {
 }
 
 pub fn probe_video_duration(video_path: &str) -> Result<f32, String> {
-    let mut command = Command::new("ffprobe");
+    let mut command = Command::new(find_ffprobe_executable());
     apply_hidden_process_startup(&mut command);
     let output = command
         .args([
@@ -2603,7 +2660,7 @@ fn resolve_task_output_dir(
 }
 
 #[tauri::command]
-pub fn create_task(state: tauri::State<AppState>, config_name: String, count: usize) -> Result<Task, String> {
+pub fn create_task(app: tauri::AppHandle, state: tauri::State<AppState>, config_name: String, count: usize) -> Result<Task, String> {
     info!("创建任务: config_name={}, count={}", config_name, count);
 
     let configs = state.configs.read().map_err(|e| e.to_string())?;
@@ -2675,6 +2732,7 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
     let output_dir = task_output_dir.clone();
     let tutorial_used_by_config = state.used_tutorial_videos.clone();
     let app_data_file = state.app_data_file.clone();
+    let app_handle_for_notify = app.clone();
 
     thread::spawn(move || {
         info!("开始处理任务: id={}", task_id);
@@ -2696,13 +2754,22 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
             if let Err(e) = fs::create_dir_all(&output_dir) {
                 error!("创建输出目录失败: {}", e);
                 push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Error, Some(format!("创建输出目录失败: {}", e)));
-                let mut tasks = tasks_clone.write().unwrap();
-                for t in tasks.iter_mut() {
-                    if t.id == task_id {
-                        t.status = TaskStatus::Error;
-                        t.error_message = Some(format!("创建输出目录失败: {}", e));
-                        break;
+                let snapshot = {
+                    let mut tasks = tasks_clone.write().unwrap();
+                    let mut snapshot: Option<Task> = None;
+                    for t in tasks.iter_mut() {
+                        if t.id == task_id {
+                            t.status = TaskStatus::Error;
+                            t.error_message = Some(format!("创建输出目录失败: {}", e));
+                            t.completed_at = Some(chrono::Utc::now());
+                            snapshot = Some(t.clone());
+                            break;
+                        }
                     }
+                    snapshot
+                };
+                if let Some(t_snapshot) = snapshot {
+                    crate::notifier::notify_task_async(&app_handle_for_notify, &t_snapshot);
                 }
                 unregister_task(&task_id);
                 return;
@@ -2716,13 +2783,22 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
         if let Err(e) = fs::create_dir_all(&task_temp_dir) {
             error!("创建任务临时目录失败: {}", e);
             push_step(&tasks_clone, &task_id, "init", "初始化任务", StepStatus::Error, Some(format!("创建临时目录失败: {}", e)));
-            let mut tasks = tasks_clone.write().unwrap();
-            for t in tasks.iter_mut() {
-                if t.id == task_id {
-                    t.status = TaskStatus::Error;
-                    t.error_message = Some(format!("创建临时目录失败: {}", e));
-                    break;
+            let snapshot = {
+                let mut tasks = tasks_clone.write().unwrap();
+                let mut snapshot: Option<Task> = None;
+                for t in tasks.iter_mut() {
+                    if t.id == task_id {
+                        t.status = TaskStatus::Error;
+                        t.error_message = Some(format!("创建临时目录失败: {}", e));
+                        t.completed_at = Some(chrono::Utc::now());
+                        snapshot = Some(t.clone());
+                        break;
+                    }
                 }
+                snapshot
+            };
+            if let Some(t_snapshot) = snapshot {
+                crate::notifier::notify_task_async(&app_handle_for_notify, &t_snapshot);
             }
             unregister_task(&task_id);
             return;
@@ -2932,8 +3008,9 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
 
         // 终态决定
         push_step(&tasks_clone, &task_id, "finish", "任务完成", StepStatus::Completed, None);
-        {
+        let final_snapshot = {
             let mut tasks = tasks_clone.write().unwrap();
+            let mut snapshot: Option<Task> = None;
             for t in tasks.iter_mut() {
                 if t.id == task_id {
                     t.completed_at = Some(chrono::Utc::now());
@@ -2964,9 +3041,16 @@ pub fn create_task(state: tauri::State<AppState>, config_name: String, count: us
                             format!("成功 {} / 失败 {}；首条失败: {}", final_completed, final_failed, detail)
                         });
                     }
+                    snapshot = Some(t.clone());
                     break;
                 }
             }
+            snapshot
+        };
+
+        // P4 飞书通知：合成任务终态触发（Completed/Error/Partial 全部通知）
+        if let Some(t_snapshot) = final_snapshot {
+            crate::notifier::notify_task_async(&app_handle_for_notify, &t_snapshot);
         }
 
         // 保存任务状态到磁盘

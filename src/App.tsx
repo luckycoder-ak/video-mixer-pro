@@ -6,11 +6,12 @@ import { TaskList } from './components/TaskList';
 import { ConfigModal } from './components/ConfigModal';
 import { GenerateModal } from './components/GenerateModal';
 import { Notification } from './components/Notification';
-import { ScheduledRunsList } from './components/ScheduledRunsList';
-import { VideoConfig, Task } from './types';
+import { ScheduledFetchersTab } from './components/ScheduledFetchersTab';
+import { AdvancedSettings } from './components/AdvancedSettings';
+import { VideoConfig, Task, ScheduledFetcher } from './types';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'configs' | 'tasks'>('configs');
+  const [activeTab, setActiveTab] = useState<'configs' | 'tasks' | 'fetchers' | 'advanced'>('configs');
   const [configs, setConfigs] = useState<VideoConfig[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -113,6 +114,28 @@ function App() {
       setShowConfigModal(false);
       setEditingConfig(null);
       showNotification('保存成功', `配置已保存到:\n${filePath}`);
+    } catch (error) {
+      showNotification('保存失败', String(error));
+    }
+  };
+
+  /** 「定时采集」Tab 中更新某个 config 的 scheduled_fetchers，并落盘触发 scheduler reconcile */
+  const handleUpdateFetchers = async (configId: string, next: ScheduledFetcher[]) => {
+    const target = configs.find((c) => c.id === configId);
+    if (!target) {
+      showNotification('保存失败', `未找到配置 ${configId}`);
+      return;
+    }
+    const updated: VideoConfig = {
+      ...target,
+      scheduled_fetchers: next,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const savedConfig = await invoke<VideoConfig>('save_config', { config: updated });
+      const newConfigs = configs.map((c) => (c.id === savedConfig.id ? savedConfig : c));
+      setConfigs(newConfigs);
+      await invoke('save_configs', { configs: newConfigs, tasks });
     } catch (error) {
       showNotification('保存失败', String(error));
     }
@@ -229,6 +252,40 @@ function App() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t" />
           )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('fetchers')}
+          className={`px-6 py-4 text-sm font-medium transition-all relative ${
+            activeTab === 'fetchers'
+              ? 'text-primary'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span>⏰</span>
+            <span>定时采集</span>
+          </span>
+          {activeTab === 'fetchers' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('advanced')}
+          className={`px-6 py-4 text-sm font-medium transition-all relative ${
+            activeTab === 'advanced'
+              ? 'text-primary'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span>🛠️</span>
+            <span>高级设置</span>
+          </span>
+          {activeTab === 'advanced' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t" />
+          )}
+        </button>
       </div>
 
       {/* Content */}
@@ -244,16 +301,15 @@ function App() {
             }}
             onRefresh={refreshTasks}
           />
+        ) : activeTab === 'tasks' ? (
+          <TaskList tasks={tasks} onRefresh={refreshTasks} />
+        ) : activeTab === 'fetchers' ? (
+          <ScheduledFetchersTab
+            configs={configs}
+            onUpdateFetchers={handleUpdateFetchers}
+          />
         ) : (
-          // T45: 任务列表双栏布局，左：合成任务 / 右：定时任务执行
-          <div className="grid grid-cols-2 gap-4 h-[calc(100vh-160px)]">
-            <div className="overflow-y-auto">
-              <TaskList tasks={tasks} onRefresh={refreshTasks} />
-            </div>
-            <div className="overflow-hidden">
-              <ScheduledRunsList configs={configs} />
-            </div>
-          </div>
+          <AdvancedSettings />
         )}
       </div>
 

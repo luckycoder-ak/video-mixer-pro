@@ -7,6 +7,12 @@ export interface TemplateSegment {
   scale_percent: number;
 }
 
+/** 全局应用设置（高级设置 Tab 中可配置）。 */
+export interface AppSettings {
+  /** 飞书自定义机器人 Webhook URL；空字符串表示未配置，所有通知静默跳过。 */
+  feishu_webhook_url: string;
+}
+
 export interface VideoConfig {
   id: string;
   name: string;
@@ -53,7 +59,8 @@ export type RunStatus =
   | 'filtering'
   | 'writing'
   | 'success'
-  | 'failed';
+  | 'failed'
+  | 'interrupted';
 
 /** 单次执行的运行记录。 */
 export interface ScheduledRun {

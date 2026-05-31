@@ -364,10 +364,11 @@ fn read_webhook(app_handle: &AppHandle) -> String {
         Some(s) => s,
         None => return String::new(),
     };
-    match state.app_settings.read() {
+    let webhook = match state.app_settings.read() {
         Ok(g) => g.feishu_webhook_url.clone(),
         Err(_) => String::new(),
-    }
+    };
+    webhook
 }
 
 /**
@@ -396,3 +397,192 @@ pub fn notify_task_async(app_handle: &AppHandle, task: &Task) {
                 snapshot.task_name,
                 redact_webhook(&webhook),
                 e
+            ),
+        }
+    });
+}
+
+/**
+ 异步发送定时任务执行通知。
+
+ 参数:
+ - `app_handle`: Tauri AppHandle。
+ - `run`: 终态 run 快照。
+ - `extra`: 通知额外语义。
+*/
+pub fn notify_scheduled_run_async(
+    app_handle: &AppHandle,
+    run: &ScheduledRun,
+    extra: NotificationExtra,
+) {
+    let snapshot = run.clone();
+    let app_handle_cloned = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let webhook = read_webhook(&app_handle_cloned);
+        if webhook.is_empty() {
+            debug!(
+                "飞书 webhook 未配置，跳过定时任务通知 run_id={}",
+                snapshot.id
+            );
+            return;
+        }
+        let content = build_scheduled_run_text(&snapshot, &extra);
+        match send_feishu_text(&webhook, &content).await {
+            Ok(()) => info!(
+                "飞书通知发送成功 fetcher={} run={}",
+                snapshot.fetcher_name, snapshot.run_index
+            ),
+            Err(e) => warn!(
+                "飞书通知发送失败 fetcher={} run={} webhook={} err={}",
+                snapshot.fetcher_name,
+                snapshot.run_index,
+                redact_webhook(&webhook),
+                e
+            ),
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scheduled_fetcher::{RunTrigger, ScheduledRun};
+    use crate::video_processor::{Task, TaskStatus};
+    use chrono::Utc;
+
+    /** 构造测试用 Task，最小字段集合。 */
+    fn make_task(status: TaskStatus, completed: usize, failed: usize, err: Option<String>) -> Task {
+        let now = Utc::now();
+        Task {
+            id: "tid".to_string(),
+            name: "配置A".to_string(),
+            config_id: "cfg".to_string(),
+            task_name: "任务1".to_string(),
+            total_count: completed + failed,
+            completed_count: completed,
+            failed_count: failed,
+            failed_videos: Vec::new(),
+            status,
+            output_folder: "/tmp/out".to_string(),
+            created_at: now,
+            started_at: Some(now - chrono::Duration::seconds(75)),
+            completed_at: Some(now),
+            error_message: err,
+            current_video: 1,
+            progress_steps: Vec::new(),
+            logs: Vec::new(),
+            allocated_tutorial_videos: Vec::new(),
+        }
+    }
+
+    /** 构造测试用 ScheduledRun。 */
+    fn make_run(status: RunStatus, err: Option<String>) -> ScheduledRun {
+        let now = Utc::now();
+        ScheduledRun {
+            id: "rid".to_string(),
+            fetcher_id: "fid".to_string(),
+            fetcher_name: "demo CronFetcher".to_string(),
+            config_id: "cfg".to_string(),
+            config_name: "配置A".to_string(),
+            run_index: 7,
+            trigger: RunTrigger::Scheduled,
+            status,
+            started_at: now - chrono::Duration::seconds(120),
+            finished_at: Some(now),
+            fetched_total: 1000,
+            matched_in_window: 23,
+            new_appended: 23,
+            csv_path: Some("/tmp/test.csv".to_string()),
+            error_message: err,
+            progress_message: String::new(),
+        }
+    }
+
+    #[test]
+    fn truncate_for_msg_keeps_short_text() {
+        let s = "你好世界".to_string();
+        assert_eq!(truncate_for_msg(&s), "你好世界");
+    }
+
+    #[test]
+    fn truncate_for_msg_cuts_long_chinese_without_panic() {
+        let long: String = "字".repeat(MAX_ERROR_TEXT_LEN + 10);
+        let cut = truncate_for_msg(&long);
+        assert!(cut.ends_with("...(已截断)"));
+        assert_eq!(cut.chars().filter(|c| *c == '字').count(), MAX_ERROR_TEXT_LEN);
+    }
+
+    #[test]
+    fn format_duration_branches() {
+        assert_eq!(format_duration(0), "0s");
+        assert_eq!(format_duration(45), "45s");
+        assert_eq!(format_duration(75), "1m 15s");
+        assert_eq!(format_duration(3700), "1h 1m");
+        assert_eq!(format_duration(-5), "0s");
+    }
+
+    #[test]
+    fn redact_webhook_does_not_panic_on_short_or_invalid() {
+        assert_eq!(redact_webhook(""), "<empty-or-too-short>");
+        assert_eq!(redact_webhook("abc"), "<empty-or-too-short>");
+        let long = "https://open.feishu.cn/open-apis/bot/v2/hook/abcd1234efgh5678";
+        let r = redact_webhook(long);
+        assert!(r.contains("open.feishu.cn"));
+        assert!(r.ends_with("efgh5678"));
+    }
+
+    #[test]
+    fn build_task_text_completed_has_basics() {
+        let t = make_task(TaskStatus::Completed, 5, 0, None);
+        let txt = build_task_text(&t);
+        assert!(txt.contains("视频合成任务完成"));
+        assert!(txt.contains("📋 配置：配置A"));
+        assert!(txt.contains("📊 进度：成功 5 / 失败 0 / 总计 5"));
+        assert!(!txt.contains("失败原因"));
+    }
+
+    #[test]
+    fn build_task_text_error_has_reason() {
+        let t = make_task(TaskStatus::Error, 0, 3, Some("ffmpeg crash".to_string()));
+        let txt = build_task_text(&t);
+        assert!(txt.contains("❌ 失败"));
+        assert!(txt.contains("失败原因：ffmpeg crash"));
+    }
+
+    #[test]
+    fn build_scheduled_run_text_branches() {
+        let r_ok = make_run(RunStatus::Success, None);
+        let s_ok = build_scheduled_run_text(&r_ok, &NotificationExtra::Normal);
+        assert!(s_ok.contains("✅ 成功"));
+        assert!(s_ok.contains("demo CronFetcher #7"));
+
+        let r_fail = make_run(RunStatus::Failed, Some("network".to_string()));
+        let s_fail = build_scheduled_run_text(&r_fail, &NotificationExtra::Normal);
+        assert!(s_fail.contains("❌ 失败"));
+        assert!(s_fail.contains("失败原因：network"));
+
+        let s_cool = build_scheduled_run_text(
+            &r_fail,
+            &NotificationExtra::CooldownTriggered { until: Utc::now() + chrono::Duration::hours(1) },
+        );
+        assert!(s_cool.contains("🟡 失败并进入冷却"));
+        assert!(s_cool.contains("已触发冷却"));
+
+        let s_pause = build_scheduled_run_text(&r_fail, &NotificationExtra::Paused);
+        assert!(s_pause.contains("🛑 失败并已自动停用"));
+        assert!(s_pause.contains("已自动停用"));
+    }
+
+    #[test]
+    fn build_request_body_shape_is_text() {
+        let v = build_request_body("hello");
+        assert_eq!(v["msg_type"], "text");
+        assert_eq!(v["content"]["text"], "hello");
+    }
+
+    #[test]
+    fn app_settings_default_is_empty() {
+        let s = crate::storage::AppSettings::default();
+        assert_eq!(s.feishu_webhook_url, "");
+    }
+}

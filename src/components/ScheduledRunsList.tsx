@@ -128,6 +128,7 @@ export const ScheduledRunsList: React.FC<Props> = ({ configs }) => {
       writing: { label: '写入中', cls: 'bg-purple-100 text-purple-700' },
       success: { label: '✓ 成功', cls: 'bg-green-100 text-green-700' },
       failed: { label: '✗ 失败', cls: 'bg-red-100 text-red-700' },
+      interrupted: { label: '⏹ 中断停止', cls: 'bg-orange-100 text-orange-700' },
     };
     const conf = map[r.status] || { label: r.status, cls: 'bg-gray-100 text-gray-700' };
     return <span className={`px-2 py-0.5 rounded text-xs ${conf.cls}`}>{conf.label}</span>;
@@ -201,9 +202,13 @@ export const ScheduledRunsList: React.FC<Props> = ({ configs }) => {
                       {r.fetcher_name} #{r.run_index}
                     </span>
                     {renderStatus(r)}
-                    {r.trigger === 'manual' && (
-                      <span className="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded">
-                        手动
+                    {r.trigger === 'manual' ? (
+                      <span className="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-600 rounded border border-blue-200">
+                        测试
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 text-[10px] bg-purple-50 text-purple-600 rounded border border-purple-200">
+                        定时
                       </span>
                     )}
                   </div>
@@ -237,7 +242,7 @@ export const ScheduledRunsList: React.FC<Props> = ({ configs }) => {
                     {r.error_message}
                   </div>
                 )}
-                {r.progress_message && r.status !== 'success' && r.status !== 'failed' && (
+                {r.progress_message && r.status !== 'success' && r.status !== 'failed' && r.status !== 'interrupted' && (
                   <div className="mt-1 text-xs text-gray-500">{r.progress_message}</div>
                 )}
               </div>
