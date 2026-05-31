@@ -30,3 +30,7 @@ src-tauri/binaries/yt-dlp*
 # Environment
 .env
 .env.local
+
+# 运行时数据（含用户私人 Webhook URL、任务记录、采集记录等，不入库）
+src-tauri/app_data.json
+src-tauri/app_data_store/
