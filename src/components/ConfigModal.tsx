@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { VideoConfig, TemplateSegment, createDefaultConfig } from '../types';
+import { VideoConfig, TemplateSegment, ScheduledFetcher, createDefaultConfig } from '../types';
+import { ScheduledFetcherCard } from './ScheduledFetcherCard';
 
 const isTauriEnv = typeof window !== 'undefined' && (window as any).__TAURI__ !== undefined;
 
@@ -598,6 +599,13 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
             </div>
           </div>
       </div>
+
+      {/* 定时元数据采集任务卡片（CronFetcher） */}
+      <ScheduledFetcherCard
+        configName={formData.name || '未命名配置'}
+        fetchers={formData.scheduled_fetchers || []}
+        onChange={(next: ScheduledFetcher[]) => handleInputChange('scheduled_fetchers', next)}
+      />
     </div>
   );
 

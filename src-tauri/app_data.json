@@ -1,0 +1,47 @@
+{
+  "configs": [
+    {
+      "id": "eeb6610c-800a-403a-8304-a630a6303e65",
+      "name": "Test",
+      "root_folder": "/Users/bytedance/Desktop/video_test",
+      "video_ratio": "9:16",
+      "audio_path": "/Users/bytedance/Desktop/video_test/celebrate me.mp3",
+      "audio_duration": 19.617958,
+      "subtitle_path": "",
+      "template_duration": 150.0,
+      "segment_count": 3,
+      "template_segments": [
+        {
+          "segment_index": 1,
+          "source_folder": "/Users/bytedance/Desktop/video_test/热点视频",
+          "crop_mode": "single",
+          "duration": 2.28,
+          "scale_percent": 51
+        },
+        {
+          "segment_index": 2,
+          "source_folder": "/Users/bytedance/Desktop/video_test/celebrate me素材4/素材",
+          "crop_mode": "dual",
+          "duration": 3.1,
+          "scale_percent": 51
+        },
+        {
+          "segment_index": 3,
+          "source_folder": "/Users/bytedance/Desktop/video_test/celebrate me素材4/素材",
+          "crop_mode": "quadrant",
+          "duration": 5.0,
+          "scale_percent": 51
+        }
+      ],
+      "tutorial_folder": "/Users/bytedance/Desktop/video_test/教程视频",
+      "output_folder": "/Users/bytedance/Desktop/video_test/视频输出",
+      "enable_transition": false,
+      "transition_duration": 0.2,
+      "created_at": "2026-05-16T12:02:24.578796Z",
+      "updated_at": "2026-05-16T13:15:03.263974Z"
+    }
+  ],
+  "tasks": [],
+  "usage_records": {},
+  "used_tutorial_videos": []
+}

@@ -3,6 +3,8 @@
 mod config;
 mod storage;
 mod video_processor;
+mod scheduled_fetcher;
+mod scheduler;
 
 use log::info;
 use std::collections::{HashMap, HashSet};
@@ -17,6 +19,10 @@ pub struct AppState {
     pub used_tutorial_videos: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     /// app_data.json 的绝对路径，供后台线程写入使用
     pub app_data_file: Arc<RwLock<Option<PathBuf>>>,
+    /// 定时元数据采集（CronFetcher）调度器
+    pub scheduler: Arc<scheduler::Scheduler>,
+    /// yt-dlp 启动期健康检查结果（false 时调度器不触发新执行）
+    pub yt_dlp_healthy: Arc<RwLock<bool>>,
 }
 
 fn main() {
@@ -33,6 +39,8 @@ fn main() {
             tasks: Arc::new(RwLock::new(Vec::new())),
             used_tutorial_videos: Arc::new(RwLock::new(HashMap::new())),
             app_data_file: Arc::new(RwLock::new(None)),
+            scheduler: scheduler::Scheduler::new(),
+            yt_dlp_healthy: Arc::new(RwLock::new(false)),
         })
         .setup(|app| {
             info!("Application setup complete");
@@ -72,6 +80,22 @@ fn main() {
                     info!("Failed to load runtime store: {}", err);
                 }
             }
+
+            // P3 T6/T26/T29: yt-dlp 健康检查 + 启动期注册全部 enabled fetchers
+            let healthy = scheduled_fetcher::check_yt_dlp_health();
+            info!("yt-dlp health check: {}", healthy);
+            if let Ok(mut slot) = state.yt_dlp_healthy.write() {
+                *slot = healthy;
+            }
+            if healthy {
+                let scheduler = state.scheduler.clone();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    scheduler.boot_from_app_data(app_handle).await;
+                });
+            } else {
+                info!("yt-dlp 不可用，跳过 scheduler boot；UI 将看到健康状态告警");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -95,6 +119,10 @@ fn main() {
             video_processor::delete_task,
             video_processor::open_folder,
             video_processor::check_tutorial_available,
+            scheduler::list_scheduled_runs,
+            scheduler::trigger_scheduled_fetcher_test,
+            scheduler::open_csv_in_finder,
+            scheduler::get_yt_dlp_healthy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { ConfigList } from './components/ConfigList';
 import { TaskList } from './components/TaskList';
 import { ConfigModal } from './components/ConfigModal';
 import { GenerateModal } from './components/GenerateModal';
 import { Notification } from './components/Notification';
+import { ScheduledRunsList } from './components/ScheduledRunsList';
 import { VideoConfig, Task } from './types';
 
 function App() {
@@ -26,6 +28,38 @@ function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  /** T46: 监听 IID 失效事件，弹出全局 Toast 提示用户更新 IID */
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+    (async () => {
+      try {
+        unlisten = await listen<{ fetcher_id: string; fetcher_name: string; config_id: string }>(
+          'scheduled-fetcher-iid-invalid',
+          (event) => {
+            const { fetcher_name, config_id } = event.payload;
+            showNotification(
+              'TikTok IID 失效',
+              `任务「${fetcher_name}」的 tiktok_iid 已失效，请前往配置编辑页更新（高级选项）。`,
+            );
+            // 自动切换到配置 tab 并打开对应配置编辑窗（若可定位）
+            const target = configs.find((c) => c.id === config_id);
+            if (target) {
+              setActiveTab('configs');
+              setEditingConfig(target);
+              setShowConfigModal(true);
+            }
+          },
+        );
+      } catch (e) {
+        console.error('监听 scheduled-fetcher-iid-invalid 失败', e);
+      }
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+    // 依赖 configs 以便事件 handler 能定位最新配置
+  }, [configs]);
 
   const loadData = async () => {
     try {
@@ -211,10 +245,15 @@ function App() {
             onRefresh={refreshTasks}
           />
         ) : (
-          <TaskList
-            tasks={tasks}
-            onRefresh={refreshTasks}
-          />
+          // T45: 任务列表双栏布局，左：合成任务 / 右：定时任务执行
+          <div className="grid grid-cols-2 gap-4 h-[calc(100vh-160px)]">
+            <div className="overflow-y-auto">
+              <TaskList tasks={tasks} onRefresh={refreshTasks} />
+            </div>
+            <div className="overflow-hidden">
+              <ScheduledRunsList configs={configs} />
+            </div>
+          </div>
         )}
       </div>
 

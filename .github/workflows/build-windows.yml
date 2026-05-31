@@ -56,6 +56,19 @@ jobs:
           Copy-Item $ffmpegExe 'src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe'
           Write-Host "Sidecar ffmpeg ready: src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe"
 
+      # 下载 yt-dlp.exe 并按 Tauri sidecar 命名规范放入 binaries/
+      # 用于 CronFetcher 定时元数据采集任务
+      - name: Download & bundle yt-dlp sidecar
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ytdlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+          $ytdlpTarget = 'src-tauri/binaries/yt-dlp-x86_64-pc-windows-msvc.exe'
+          New-Item -ItemType Directory -Force -Path 'src-tauri/binaries' | Out-Null
+          Write-Host "Downloading yt-dlp from $ytdlpUrl"
+          Invoke-WebRequest -Uri $ytdlpUrl -OutFile $ytdlpTarget
+          Write-Host "Sidecar yt-dlp ready: $ytdlpTarget"
+
       - name: Install frontend dependencies
         run: npm ci
 

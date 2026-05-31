@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::AppState;
+use crate::scheduled_fetcher::ScheduledFetcher;
 use log::info;
 use crate::video_processor::apply_hidden_process_startup;
 
@@ -51,6 +52,9 @@ pub struct VideoConfig {
     pub enable_transition: bool,
     #[serde(default = "default_transition_duration")]
     pub transition_duration: f32,
+    /// 该配置下挂载的定时元数据采集任务列表（CronFetcher）。
+    #[serde(default)]
+    pub scheduled_fetchers: Vec<ScheduledFetcher>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -73,6 +77,7 @@ impl VideoConfig {
             output_folder: String::new(),
             enable_transition: false,
             transition_duration: default_transition_duration(),
+            scheduled_fetchers: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -240,4 +245,59 @@ pub fn get_audio_duration(audio_path: String) -> Result<f32, String> {
     let duration_str = String::from_utf8_lossy(&output.stdout);
     let duration_secs: f64 = duration_str.trim().parse().map_err(|_| "解析时长失败".to_string())?;
     Ok(duration_secs as f32)
+}
+
+#[cfg(test)]
+mod compat_tests {
+    use super::*;
+
+    /// 旧版 JSON：完全没有 `scheduled_fetchers` 字段，应反序列化成功且默认空数组。
+    #[test]
+    fn video_config_should_deserialize_legacy_json_without_scheduled_fetchers() {
+        let raw = r#"{
+            "id": "abc",
+            "name": "demo",
+            "root_folder": "/tmp",
+            "video_ratio": "9:16",
+            "audio_path": "/tmp/a.mp3",
+            "audio_duration": 1.0,
+            "subtitle_path": "",
+            "template_duration": 30.0,
+            "segment_count": 1,
+            "template_segments": [],
+            "tutorial_folder": "",
+            "output_folder": "/tmp",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let cfg: VideoConfig = serde_json::from_str(raw).expect("should parse legacy json");
+        assert!(cfg.scheduled_fetchers.is_empty());
+        assert_eq!(cfg.transition_duration, 0.2);
+        assert_eq!(cfg.enable_transition, false);
+    }
+
+    /// 新版部分字段缺失：`scheduled_fetchers[*]` 缺 `max_fetch_num` / `num_meet_condition` /
+    /// `tiktok_iid` / `enabled` / `cooldown_until`，全部走 default 兜底。
+    #[test]
+    fn scheduled_fetcher_should_deserialize_with_partial_fields() {
+        let raw = r#"{
+            "id": "f1",
+            "name": "demo CronFetcher #1",
+            "target_url": "https://www.tiktok.com/music/x",
+            "window_days": 1,
+            "window_hours": 0,
+            "interval_days": 0,
+            "interval_hours": 1,
+            "output_dir": "/tmp/x",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let f: ScheduledFetcher = serde_json::from_str(raw).expect("should parse partial json");
+        assert_eq!(f.max_fetch_num, 1000);
+        assert_eq!(f.num_meet_condition, 100);
+        assert_eq!(f.tiktok_iid, crate::scheduled_fetcher::DEFAULT_TIKTOK_IID);
+        assert_eq!(f.enabled, true);
+        assert_eq!(f.consecutive_failures, 0);
+        assert!(f.cooldown_until.is_none());
+    }
 }

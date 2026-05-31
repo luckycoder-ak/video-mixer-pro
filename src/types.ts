@@ -21,8 +21,58 @@ export interface VideoConfig {
   tutorial_folder: string;
   output_folder: string;
   enable_transition: boolean;
+  scheduled_fetchers?: ScheduledFetcher[];
   created_at: string;
   updated_at: string;
+}
+
+/** 定时元数据采集任务（CronFetcher）。 */
+export interface ScheduledFetcher {
+  id: string;
+  name: string;
+  target_url: string;
+  window_days: number;
+  window_hours: number;
+  interval_days: number;
+  interval_hours: number;
+  output_dir: string;
+  max_fetch_num: number;
+  num_meet_condition: number;
+  tiktok_iid: string;
+  enabled: boolean;
+  consecutive_failures: number;
+  cooldown_until?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RunTrigger = 'manual' | 'scheduled';
+export type RunStatus =
+  | 'pending'
+  | 'fetching_list'
+  | 'filtering'
+  | 'writing'
+  | 'success'
+  | 'failed';
+
+/** 单次执行的运行记录。 */
+export interface ScheduledRun {
+  id: string;
+  fetcher_id: string;
+  fetcher_name: string;
+  config_id: string;
+  config_name: string;
+  run_index: number;
+  trigger: RunTrigger;
+  status: RunStatus;
+  started_at: string;
+  finished_at?: string | null;
+  fetched_total?: number;
+  matched_in_window?: number;
+  new_appended?: number;
+  csv_path?: string | null;
+  error_message?: string | null;
+  progress_message?: string;
 }
 
 export interface TaskStep {
@@ -79,6 +129,7 @@ export const createDefaultConfig = (): VideoConfig => ({
   tutorial_folder: '',
   output_folder: '',
   enable_transition: false,
+  scheduled_fetchers: [],
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 });

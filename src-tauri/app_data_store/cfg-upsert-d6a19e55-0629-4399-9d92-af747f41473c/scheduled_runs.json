@@ -1,0 +1,20 @@
+[
+  {
+    "id": "rid",
+    "fetcher_id": "f1",
+    "fetcher_name": "demo CronFetcher #1",
+    "config_id": "cfg-upsert-d6a19e55-0629-4399-9d92-af747f41473c",
+    "config_name": "配置A",
+    "run_index": 1,
+    "trigger": "scheduled",
+    "status": "success",
+    "started_at": "2026-05-31T08:09:13.382872Z",
+    "finished_at": "2026-05-31T08:09:13.382871Z",
+    "fetched_total": 0,
+    "matched_in_window": 0,
+    "new_appended": 0,
+    "csv_path": null,
+    "error_message": null,
+    "progress_message": ""
+  }
+]

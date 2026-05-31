@@ -8,7 +8,9 @@ use log::info;
 
 const TASKS_FILE_NAME: &str = "tasks.json";
 const USED_TUTORIAL_FILE_NAME: &str = "used_tutorial_videos.json";
+const SCHEDULED_RUNS_FILE_NAME: &str = "scheduled_runs.json";
 const TASK_RETENTION_DAYS: i64 = 30;
+const SCHEDULED_RUN_RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppData {
@@ -19,6 +21,17 @@ pub struct AppData {
     /// 教程素材全局已用记录：绝对路径字符串集合，跨任务持久化，永不复用。
     #[serde(default)]
     pub used_tutorial_videos: Vec<String>,
+    /// 全局应用设置（如飞书 Webhook URL）。老版本 JSON 缺失时使用 Default。
+    #[serde(default)]
+    pub app_settings: AppSettings,
+}
+
+/// 应用全局设置：当前仅承载飞书 Webhook URL。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AppSettings {
+    /// 飞书自定义机器人 Webhook URL；空字符串表示未配置，所有通知静默跳过。
+    #[serde(default)]
+    pub feishu_webhook_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -388,6 +401,7 @@ fn load_runtime_data_from_store(
             tasks,
             usage_records: HashMap::new(),
             used_tutorial_videos: Vec::new(),
+            app_settings: AppSettings::default(),
         },
         used_tutorial_by_config,
     })
@@ -553,13 +567,27 @@ pub fn persist_runtime_store_in_dir(
     }
 
     persisted_tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    // 保留 app_data.json 中既有的 app_settings（避免 persist 时覆盖）
+    let app_data_path = base_dir.join("app_data.json");
+    let preserved_app_settings = if app_data_path.exists() {
+        match fs::read_to_string(&app_data_path) {
+            Ok(content) => match serde_json::from_str::<AppData>(&content) {
+                Ok(existing) => existing.app_settings,
+                Err(_) => AppSettings::default(),
+            },
+            Err(_) => AppSettings::default(),
+        }
+    } else {
+        AppSettings::default()
+    };
     let minimal_data = AppData {
         configs: configs.to_vec(),
         tasks: Vec::new(),
         usage_records,
         used_tutorial_videos: Vec::new(),
+        app_settings: preserved_app_settings,
     };
-    write_json_pretty(&base_dir.join("app_data.json"), &minimal_data)?;
+    write_json_pretty(&app_data_path, &minimal_data)?;
 
     Ok((store_dir, persisted_tasks))
 }
@@ -593,6 +621,7 @@ pub fn load_runtime_store() -> Result<RuntimeStoreData, String> {
 
     let mut runtime_data = load_runtime_data_from_store(base_dir, &legacy_data.configs)?;
     runtime_data.app_data.usage_records = legacy_data.usage_records;
+    runtime_data.app_data.app_settings = legacy_data.app_settings;
     Ok(runtime_data)
 }
 
@@ -644,6 +673,222 @@ pub fn get_temp_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 pub fn get_data_file_path(_app: tauri::AppHandle) -> Result<String, String> {
     let data_file = resolve_app_data_file_path()?;
     Ok(data_file.to_string_lossy().to_string())
+}
+
+/**
+ 计算 ScheduledRun 是否过期需要清理（30 天保留窗口）。
+
+ 参数:
+ - `run`: 待判断的运行记录。
+ - `cutoff`: 保留窗口截止时间。
+
+ 返回:
+ - `true`: 该记录应被清理。
+ - `false`: 该记录应继续保留。
+
+ 异常:
+ - 无。
+*/
+fn should_prune_scheduled_run(
+    run: &crate::scheduled_fetcher::ScheduledRun,
+    cutoff: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let final_status = matches!(
+        run.status,
+        crate::scheduled_fetcher::RunStatus::Success
+            | crate::scheduled_fetcher::RunStatus::Failed
+    );
+    if !final_status {
+        return false;
+    }
+    let reference_time = run.finished_at.unwrap_or(run.started_at);
+    reference_time < cutoff
+}
+
+/**
+ 按 30 天窗口清理历史 ScheduledRun。
+
+ 参数:
+ - `runs`: 原始记录列表。
+
+ 返回:
+ - `(Vec<ScheduledRun>, usize)`: 清理后的列表与被删除的条数。
+
+ 异常:
+ - 无。
+*/
+fn prune_old_scheduled_runs(
+    runs: Vec<crate::scheduled_fetcher::ScheduledRun>,
+) -> (Vec<crate::scheduled_fetcher::ScheduledRun>, usize) {
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(SCHEDULED_RUN_RETENTION_DAYS);
+    let original = runs.len();
+    let retained: Vec<_> = runs
+        .into_iter()
+        .filter(|r| !should_prune_scheduled_run(r, cutoff))
+        .collect();
+    let removed = original.saturating_sub(retained.len());
+    (retained, removed)
+}
+
+/**
+ 加载指定 config 下的 ScheduledRun 列表，并自动清理超过 30 天的旧记录。
+
+ 参数:
+ - `config_id`: 配置 ID。
+
+ 返回:
+ - `Ok(Vec<ScheduledRun>)`: 清理后的列表。
+ - `Err(String)`: 读取或写回失败。
+*/
+pub fn load_scheduled_runs(
+    config_id: &str,
+) -> Result<Vec<crate::scheduled_fetcher::ScheduledRun>, String> {
+    let data_file = resolve_app_data_file_path()?;
+    let base_dir = data_file
+        .parent()
+        .ok_or_else(|| "无法解析 app_data.json 所在目录".to_string())?;
+    let store_dir = resolve_app_data_store_dir_from(base_dir);
+    let config_dir = resolve_config_store_dir(&store_dir, config_id);
+    fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    let runs_file = config_dir.join(SCHEDULED_RUNS_FILE_NAME);
+    let runs: Vec<crate::scheduled_fetcher::ScheduledRun> = read_json_or_default(&runs_file)?;
+    let (retained, removed) = prune_old_scheduled_runs(runs);
+    if removed > 0 {
+        write_json_pretty(&runs_file, &retained)?;
+    }
+    Ok(retained)
+}
+
+/**
+ 持久化指定 config 下的 ScheduledRun 列表，写入前先做 30 天清理。
+
+ 参数:
+ - `config_id`: 配置 ID。
+ - `runs`: 待持久化的记录列表。
+
+ 返回:
+ - `Ok(usize)`: 被清理掉的旧记录条数。
+ - `Err(String)`: 写入失败。
+*/
+pub fn persist_scheduled_runs(
+    config_id: &str,
+    runs: Vec<crate::scheduled_fetcher::ScheduledRun>,
+) -> Result<usize, String> {
+    let data_file = resolve_app_data_file_path()?;
+    let base_dir = data_file
+        .parent()
+        .ok_or_else(|| "无法解析 app_data.json 所在目录".to_string())?;
+    let store_dir = resolve_app_data_store_dir_from(base_dir);
+    let config_dir = resolve_config_store_dir(&store_dir, config_id);
+    fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    let (retained, removed) = prune_old_scheduled_runs(runs);
+    write_json_pretty(&config_dir.join(SCHEDULED_RUNS_FILE_NAME), &retained)?;
+    Ok(removed)
+}
+
+/**
+ 在指定 config 的 scheduled_runs 列表中追加/更新一条记录（按 id upsert），并应用 30 天清理。
+
+ 参数:
+ - `config_id`: 配置 ID。
+ - `run`: 待写入的记录。
+
+ 返回:
+ - `Ok(())`: 写入成功。
+ - `Err(String)`: 读写失败。
+*/
+pub fn upsert_scheduled_run(
+    config_id: &str,
+    run: crate::scheduled_fetcher::ScheduledRun,
+) -> Result<(), String> {
+    let mut runs = load_scheduled_runs(config_id)?;
+    if let Some(pos) = runs.iter().position(|r| r.id == run.id) {
+        runs[pos] = run;
+    } else {
+        runs.push(run);
+    }
+    persist_scheduled_runs(config_id, runs)?;
+    Ok(())
+}
+
+/**
+ 仅替换 `app_data.json` 中的 configs / tasks 字段，保留 usage_records 等，
+ 不触发 sync_config_store / scheduler.reconcile_after_save。
+
+ 用途：调度器在调度循环内部修改 fetcher 的 consecutive_failures / cooldown_until /
+ enabled 后，需要把变更落盘但不能重新触发 reconcile（否则会 cancel 自己导致死锁/抖动）。
+
+ 参数:
+ - `data_file`: `app_data.json` 绝对路径。
+ - `configs`: 当前内存中的最新 configs 快照。
+ - `tasks`: 当前内存中的最新 tasks 快照（仅用于回写到 app_data.json，
+   实际任务持久化仍以 store_dir 为准；这里保持与 persist_runtime_store_in_dir 的语义一致：
+   tasks 字段在 app_data.json 中始终为空数组）。
+
+ 返回:
+ - `Ok(())`: 写入成功。
+ - `Err(String)`: 读写失败。
+*/
+pub fn write_app_data_file_only(
+    data_file: &Path,
+    configs: &[super::config::VideoConfig],
+    _tasks: &[super::video_processor::Task],
+) -> Result<(), String> {
+    if let Some(parent) = data_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let (usage_records, app_settings) = if data_file.exists() {
+        match fs::read_to_string(data_file) {
+            Ok(content) => match serde_json::from_str::<AppData>(&content) {
+                Ok(existing) => (existing.usage_records, existing.app_settings),
+                Err(_) => (HashMap::new(), AppSettings::default()),
+            },
+            Err(_) => (HashMap::new(), AppSettings::default()),
+        }
+    } else {
+        (HashMap::new(), AppSettings::default())
+    };
+    let minimal = AppData {
+        configs: configs.to_vec(),
+        tasks: Vec::new(),
+        usage_records,
+        used_tutorial_videos: Vec::new(),
+        app_settings,
+    };
+    write_json_pretty(data_file, &minimal)
+}
+
+/**
+ 仅替换 `app_data.json` 中的 `app_settings` 字段，保留 configs / usage_records 等其他字段。
+
+ 用途：高级设置「保存」按钮调用 `save_app_settings` 命令时，仅写入 webhook URL，
+ 不应触发 sync_config_store / scheduler.reconcile_after_save / 任务持久化路径。
+
+ 参数:
+ - `data_file`: `app_data.json` 绝对路径。
+ - `settings`: 待写入的最新 AppSettings 快照。
+
+ 返回:
+ - `Ok(())`: 写入成功。
+ - `Err(String)`: 读写失败。
+*/
+pub fn write_app_data_settings_only(
+    data_file: &Path,
+    settings: &AppSettings,
+) -> Result<(), String> {
+    if let Some(parent) = data_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut current: AppData = if data_file.exists() {
+        match fs::read_to_string(data_file) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => AppData::default(),
+        }
+    } else {
+        AppData::default()
+    };
+    current.app_settings = settings.clone();
+    write_json_pretty(data_file, &current)
 }
 
 #[tauri::command]
@@ -699,6 +944,17 @@ pub fn save_configs(
     }
     info!("Successfully saved data to {:?}", data_file);
     info!("Successfully synced config store to {:?}", store_dir);
+
+    // T30: 调度器 reconcile（异步执行，不阻塞 save_configs 命令返回）
+    let scheduler = app_state.scheduler.clone();
+    let configs_for_reconcile = configs.clone();
+    let app_handle_for_reconcile = app.clone();
+    tauri::async_runtime::spawn(async move {
+        scheduler
+            .reconcile_after_save(&configs_for_reconcile, app_handle_for_reconcile)
+            .await;
+    });
+
     Ok(())
 }
 
@@ -741,6 +997,7 @@ mod tests {
             output_folder: "/tmp/output".to_string(),
             enable_transition: false,
             transition_duration: 0.2,
+            scheduled_fetchers: Vec::new(),
             created_at: now,
             updated_at: now,
         }
@@ -807,6 +1064,7 @@ mod tests {
             current_video: 1,
             progress_steps: Vec::new(),
             logs: Vec::new(),
+            allocated_tutorial_videos: Vec::new(),
         }
     }
 
@@ -956,6 +1214,95 @@ mod tests {
         let second_modified = fs::metadata(&config_file).unwrap().modified().unwrap();
 
         assert_eq!(first_modified, second_modified);
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    /**
+     构造 ScheduledRun 测试样例。
+    */
+    fn build_test_run(
+        run_id: &str,
+        config_id: &str,
+        status: crate::scheduled_fetcher::RunStatus,
+        finished_at: Option<chrono::DateTime<Utc>>,
+    ) -> crate::scheduled_fetcher::ScheduledRun {
+        crate::scheduled_fetcher::ScheduledRun {
+            id: run_id.to_string(),
+            fetcher_id: "f1".to_string(),
+            fetcher_name: "demo CronFetcher #1".to_string(),
+            config_id: config_id.to_string(),
+            config_name: "配置A".to_string(),
+            run_index: 1,
+            trigger: crate::scheduled_fetcher::RunTrigger::Scheduled,
+            status,
+            started_at: finished_at.unwrap_or_else(Utc::now),
+            finished_at,
+            fetched_total: 0,
+            matched_in_window: 0,
+            new_appended: 0,
+            csv_path: None,
+            error_message: None,
+            progress_message: String::new(),
+        }
+    }
+
+    #[test]
+    fn prune_old_scheduled_runs_should_drop_finished_older_than_30_days() {
+        let now = Utc::now();
+        let stale = now - chrono::Duration::days(31);
+        let runs = vec![
+            build_test_run("r-old-success", "c", crate::scheduled_fetcher::RunStatus::Success, Some(stale)),
+            build_test_run("r-old-failed", "c", crate::scheduled_fetcher::RunStatus::Failed, Some(stale)),
+            build_test_run("r-running", "c", crate::scheduled_fetcher::RunStatus::FetchingList, None),
+            build_test_run("r-fresh", "c", crate::scheduled_fetcher::RunStatus::Success, Some(now)),
+        ];
+        let (retained, removed) = prune_old_scheduled_runs(runs);
+        assert_eq!(removed, 2);
+        assert_eq!(retained.len(), 2);
+        assert!(retained.iter().any(|r| r.id == "r-running"));
+        assert!(retained.iter().any(|r| r.id == "r-fresh"));
+    }
+
+    #[test]
+    fn persist_and_load_scheduled_runs_should_round_trip_with_pruning() {
+        let temp_dir = create_test_root_dir();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let config_id = &format!("cfg-roundtrip-{}", Uuid::new_v4());
+        let stale = Utc::now() - chrono::Duration::days(31);
+        let runs = vec![
+            build_test_run("a-old", config_id, crate::scheduled_fetcher::RunStatus::Success, Some(stale)),
+            build_test_run("a-fresh", config_id, crate::scheduled_fetcher::RunStatus::Success, Some(Utc::now())),
+        ];
+        let removed = persist_scheduled_runs(config_id, runs).unwrap();
+        assert_eq!(removed, 1);
+        let loaded = load_scheduled_runs(config_id).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "a-fresh");
+
+        std::env::set_current_dir(&original_dir).unwrap();
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn upsert_scheduled_run_should_replace_existing_by_id() {
+        let temp_dir = create_test_root_dir();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+
+        let config_id = &format!("cfg-upsert-{}", Uuid::new_v4());
+        let now = Utc::now();
+        let mut r = build_test_run("rid", config_id, crate::scheduled_fetcher::RunStatus::Pending, None);
+        upsert_scheduled_run(config_id, r.clone()).unwrap();
+        r.status = crate::scheduled_fetcher::RunStatus::Success;
+        r.finished_at = Some(now);
+        upsert_scheduled_run(config_id, r.clone()).unwrap();
+        let loaded = load_scheduled_runs(config_id).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].status, crate::scheduled_fetcher::RunStatus::Success);
+
+        std::env::set_current_dir(&original_dir).unwrap();
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

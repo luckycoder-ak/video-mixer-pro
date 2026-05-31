@@ -37,6 +37,14 @@ VideoMixer Pro 是一个面向短视频创作者的跨平台桌面客户端软�
 - 进度展示
 - 与 Tauri 后端通信
 
+### 5. 定时元数据采集 ([scheduled_fetcher.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduled_fetcher.rs) / [scheduler.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduler.rs))
+- 通过 yt-dlp sidecar 定期采集 TikTok 视频元数据并写入 CSV
+- 任务级 tiktok_iid 配置（覆盖默认 IID）
+- 单任务串行调度（全局 run_lock）+ 错峰 5s 防封禁
+- 失败状态机：3 次连续失败 → 冷却 1h；6 次 → 自动停用
+- CSV 命名：`<run_index>-<YYYYMMDD_HHMMSS>.csv`（冲突追加 UUID 后缀）
+- UTF-8 with BOM 编码 + 仅单次运行内去重
+
 ---
 
 ## Agent 工作流程
@@ -56,6 +64,15 @@ VideoMixer Pro 是一个面向短视频创作者的跨平台桌面客户端软�
 
 ## 最近修改记录
 
+### v1.0.6
+1. ✅ 新增定时元数据采集功能（Scheduled TikTok Fetcher）
+2. ✅ 集成 yt-dlp sidecar（macOS / Windows，CI 自动下载）
+3. ✅ 新增 Scheduler 后台调度循环（tick=60s + 全局串行锁 + 错峰 5s）
+4. ✅ 新增 ScheduledFetcherCard / Form / TestModal / RunsList 前端组件
+5. ✅ 任务列表 tab 改为双栏布局：合成任务 + 定时任务执行
+6. ✅ IID 失效全局 Toast 提示并自动跳转编辑页
+7. ✅ 失败两阶梯策略（3 次冷却 1h / 6 次停用）
+
 ### v1.0.5
 1. ✅ 视频音频拼接时按最短长度截断
 2. ✅ 视频生成完成后自动删除教程视频文件
@@ -71,6 +88,10 @@ VideoMixer Pro 是一个面向短视频创作者的跨平台桌面客户端软�
 |------|------|
 | 主入口 | [main.rs](file:///workspace/video-mixer-pro/src-tauri/src/main.rs) |
 | 视频处理核心 | [video_processor.rs](file:///workspace/video-mixer-pro/src-tauri/src/video_processor.rs) |
+| 定时采集逻辑 | [scheduled_fetcher.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduled_fetcher.rs) |
+| 调度器与命令 | [scheduler.rs](file:///workspace/video-mixer-pro/src-tauri/src/scheduler.rs) |
 | 前端主组件 | [App.tsx](file:///workspace/video-mixer-pro/src/App.tsx) |
+| 定时任务卡片 | [ScheduledFetcherCard.tsx](file:///workspace/video-mixer-pro/src/components/ScheduledFetcherCard.tsx) |
+| 定时任务执行列表 | [ScheduledRunsList.tsx](file:///workspace/video-mixer-pro/src/components/ScheduledRunsList.tsx) |
 | 类型定义 | [types.ts](file:///workspace/video-mixer-pro/src/types.ts) |
 | CI/CD 配置 | [build-windows.yml](file:///workspace/video-mixer-pro/.github/workflows/build-windows.yml) |

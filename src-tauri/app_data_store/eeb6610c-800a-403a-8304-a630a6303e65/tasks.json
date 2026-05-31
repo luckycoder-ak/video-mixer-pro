@@ -1,0 +1,1305 @@
+[
+  {
+    "id": "b56b71c4-d34d-4bf3-82d8-06423e85c427",
+    "name": "Test",
+    "config_id": "eeb6610c-800a-403a-8304-a630a6303e65",
+    "task_name": "Test_2026-05-16_12-02-36",
+    "total_count": 5,
+    "completed_count": 5,
+    "failed_count": 0,
+    "failed_videos": [],
+    "status": "completed",
+    "output_folder": "/Users/bytedance/Desktop/video_test/视频输出/Test_2026-05-16_12-02-36",
+    "created_at": "2026-05-16T12:02:36.767778Z",
+    "started_at": null,
+    "completed_at": "2026-05-16T12:03:16.812573Z",
+    "error_message": null,
+    "current_video": 0,
+    "progress_steps": [
+      {
+        "id": "video_1",
+        "name": "视频1 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.807651Z",
+        "completed_at": "2026-05-16T12:03:16.700177Z"
+      },
+      {
+        "id": "video_2",
+        "name": "视频2 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.807683Z",
+        "completed_at": "2026-05-16T12:03:16.692939Z"
+      },
+      {
+        "id": "video_3",
+        "name": "视频3 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.807725Z",
+        "completed_at": "2026-05-16T12:03:16.785453Z"
+      },
+      {
+        "id": "video_5",
+        "name": "视频5 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.807788Z",
+        "completed_at": "2026-05-16T12:03:16.812476Z"
+      },
+      {
+        "id": "video_4",
+        "name": "视频4 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.807823Z",
+        "completed_at": "2026-05-16T12:03:16.761590Z"
+      },
+      {
+        "id": "video_5__scan_1",
+        "name": "视频5 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.808399Z",
+        "completed_at": "2026-05-16T12:02:36.971925Z"
+      },
+      {
+        "id": "video_1__scan_1",
+        "name": "视频1 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.808436Z",
+        "completed_at": "2026-05-16T12:02:36.971944Z"
+      },
+      {
+        "id": "video_2__scan_1",
+        "name": "视频2 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.808446Z",
+        "completed_at": "2026-05-16T12:02:36.971915Z"
+      },
+      {
+        "id": "video_3__scan_1",
+        "name": "视频3 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.808526Z",
+        "completed_at": "2026-05-16T12:02:36.972287Z"
+      },
+      {
+        "id": "video_4__scan_1",
+        "name": "视频4 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.808560Z",
+        "completed_at": "2026-05-16T12:02:36.971926Z"
+      },
+      {
+        "id": "video_2__segment_1",
+        "name": "视频2 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.971918Z",
+        "completed_at": "2026-05-16T12:02:39.568626Z"
+      },
+      {
+        "id": "video_5__segment_1",
+        "name": "视频5 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.971932Z",
+        "completed_at": "2026-05-16T12:02:39.689973Z"
+      },
+      {
+        "id": "video_4__segment_1",
+        "name": "视频4 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.971938Z",
+        "completed_at": "2026-05-16T12:02:39.573655Z"
+      },
+      {
+        "id": "video_1__segment_1",
+        "name": "视频1 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.971945Z",
+        "completed_at": "2026-05-16T12:02:39.557427Z"
+      },
+      {
+        "id": "video_3__segment_1",
+        "name": "视频3 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:36.972288Z",
+        "completed_at": "2026-05-16T12:02:39.566720Z"
+      },
+      {
+        "id": "video_1__scan_2",
+        "name": "视频1 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:39.557437Z",
+        "completed_at": "2026-05-16T12:02:40.310898Z"
+      },
+      {
+        "id": "video_3__scan_2",
+        "name": "视频3 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:39.566728Z",
+        "completed_at": "2026-05-16T12:02:40.310851Z"
+      },
+      {
+        "id": "video_2__scan_2",
+        "name": "视频2 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:39.568630Z",
+        "completed_at": "2026-05-16T12:02:40.310858Z"
+      },
+      {
+        "id": "video_4__scan_2",
+        "name": "视频4 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:39.573664Z",
+        "completed_at": "2026-05-16T12:02:40.310847Z"
+      },
+      {
+        "id": "video_5__scan_2",
+        "name": "视频5 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:39.689982Z",
+        "completed_at": "2026-05-16T12:02:40.311162Z"
+      },
+      {
+        "id": "video_4__segment_2",
+        "name": "视频4 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:40.310850Z",
+        "completed_at": "2026-05-16T12:02:43.536771Z"
+      },
+      {
+        "id": "video_3__segment_2",
+        "name": "视频3 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:40.310853Z",
+        "completed_at": "2026-05-16T12:02:43.521463Z"
+      },
+      {
+        "id": "video_2__segment_2",
+        "name": "视频2 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:40.310859Z",
+        "completed_at": "2026-05-16T12:02:43.399877Z"
+      },
+      {
+        "id": "video_1__segment_2",
+        "name": "视频1 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:40.310900Z",
+        "completed_at": "2026-05-16T12:02:43.527697Z"
+      },
+      {
+        "id": "video_5__segment_2",
+        "name": "视频5 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:40.311163Z",
+        "completed_at": "2026-05-16T12:02:43.524047Z"
+      },
+      {
+        "id": "video_2__scan_3",
+        "name": "视频2 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.399896Z",
+        "completed_at": "2026-05-16T12:02:43.400360Z"
+      },
+      {
+        "id": "video_2__segment_3",
+        "name": "视频2 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.400363Z",
+        "completed_at": "2026-05-16T12:02:46.871983Z"
+      },
+      {
+        "id": "video_3__scan_3",
+        "name": "视频3 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.521474Z",
+        "completed_at": "2026-05-16T12:02:43.521687Z"
+      },
+      {
+        "id": "video_3__segment_3",
+        "name": "视频3 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.521688Z",
+        "completed_at": "2026-05-16T12:02:46.861808Z"
+      },
+      {
+        "id": "video_5__scan_3",
+        "name": "视频5 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.524055Z",
+        "completed_at": "2026-05-16T12:02:43.524216Z"
+      },
+      {
+        "id": "video_5__segment_3",
+        "name": "视频5 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.524217Z",
+        "completed_at": "2026-05-16T12:02:46.851396Z"
+      },
+      {
+        "id": "video_1__scan_3",
+        "name": "视频1 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.527705Z",
+        "completed_at": "2026-05-16T12:02:43.527880Z"
+      },
+      {
+        "id": "video_1__segment_3",
+        "name": "视频1 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.527880Z",
+        "completed_at": "2026-05-16T12:02:46.859604Z"
+      },
+      {
+        "id": "video_4__scan_3",
+        "name": "视频4 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.536781Z",
+        "completed_at": "2026-05-16T12:02:43.536976Z"
+      },
+      {
+        "id": "video_4__segment_3",
+        "name": "视频4 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:43.536977Z",
+        "completed_at": "2026-05-16T12:02:46.626213Z"
+      },
+      {
+        "id": "video_4__tutorial",
+        "name": "视频4 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:46.645994Z",
+        "completed_at": "2026-05-16T12:02:56.372927Z"
+      },
+      {
+        "id": "video_5__tutorial",
+        "name": "视频5 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:46.851546Z",
+        "completed_at": "2026-05-16T12:02:56.723282Z"
+      },
+      {
+        "id": "video_1__tutorial",
+        "name": "视频1 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:46.859717Z",
+        "completed_at": "2026-05-16T12:02:56.601696Z"
+      },
+      {
+        "id": "video_3__tutorial",
+        "name": "视频3 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:46.861917Z",
+        "completed_at": "2026-05-16T12:02:56.724233Z"
+      },
+      {
+        "id": "video_2__tutorial",
+        "name": "视频2 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:46.872035Z",
+        "completed_at": "2026-05-16T12:02:56.619479Z"
+      },
+      {
+        "id": "video_4__xfade",
+        "name": "视频4 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:56.666054Z",
+        "completed_at": "2026-05-16T12:03:02.326251Z"
+      },
+      {
+        "id": "video_2__xfade",
+        "name": "视频2 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:56.737699Z",
+        "completed_at": "2026-05-16T12:03:02.777329Z"
+      },
+      {
+        "id": "video_1__xfade",
+        "name": "视频1 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:56.737865Z",
+        "completed_at": "2026-05-16T12:03:02.895784Z"
+      },
+      {
+        "id": "video_3__xfade",
+        "name": "视频3 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:56.818368Z",
+        "completed_at": "2026-05-16T12:03:02.866462Z"
+      },
+      {
+        "id": "video_5__xfade",
+        "name": "视频5 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:02:56.823066Z",
+        "completed_at": "2026-05-16T12:03:03.019084Z"
+      },
+      {
+        "id": "video_4__concat",
+        "name": "视频4 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:02.326305Z",
+        "completed_at": "2026-05-16T12:03:15.798600Z"
+      },
+      {
+        "id": "video_2__concat",
+        "name": "视频2 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:02.777380Z",
+        "completed_at": "2026-05-16T12:03:16.120965Z"
+      },
+      {
+        "id": "video_3__concat",
+        "name": "视频3 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:02.866488Z",
+        "completed_at": "2026-05-16T12:03:16.460546Z"
+      },
+      {
+        "id": "video_1__concat",
+        "name": "视频1 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:02.895816Z",
+        "completed_at": "2026-05-16T12:03:16.342196Z"
+      },
+      {
+        "id": "video_5__concat",
+        "name": "视频5 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:03.019131Z",
+        "completed_at": "2026-05-16T12:03:16.494381Z"
+      },
+      {
+        "id": "video_4__audio",
+        "name": "视频4 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.376200Z",
+        "completed_at": "2026-05-16T12:03:16.751530Z"
+      },
+      {
+        "id": "video_2__audio",
+        "name": "视频2 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.429145Z",
+        "completed_at": "2026-05-16T12:03:16.677426Z"
+      },
+      {
+        "id": "video_1__audio",
+        "name": "视频1 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.444973Z",
+        "completed_at": "2026-05-16T12:03:16.692342Z"
+      },
+      {
+        "id": "video_3__audio",
+        "name": "视频3 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.511946Z",
+        "completed_at": "2026-05-16T12:03:16.762246Z"
+      },
+      {
+        "id": "video_5__audio",
+        "name": "视频5 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.548987Z",
+        "completed_at": "2026-05-16T12:03:16.795551Z"
+      },
+      {
+        "id": "finish",
+        "name": "任务完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:03:16.812568Z",
+        "completed_at": "2026-05-16T12:03:16.812568Z"
+      }
+    ],
+    "logs": [
+      {
+        "timestamp": "2026-05-16T12:02:36.807656Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "工作线程 0 开始处理视频1"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.807685Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "工作线程 1 开始处理视频2"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.807727Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "工作线程 4 开始处理视频3"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.807789Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "工作线程 2 开始处理视频5"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.807826Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "工作线程 6 开始处理视频4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.971906Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_-20260424162810.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.971921Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_#pioneertemp-20260428011909.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.971923Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_#Dc_#dystans-20260428184640.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.971927Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_I_celebrate_-20260428184634.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:36.972283Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_#Dc_#dystans-20260428184640.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:40.310833Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4, Heather Rose 🌹 ✨🥉-I celebrate me.  According to what AI thinks I look like 🤣 #CapCut #icelebrateme #tiktoktrend #fyp #gr.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:40.310841Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：aitrendscc-#CapCut #pioneertemplate #capcutpioneer #icelebrateme #aitrend(3).mp4, aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:40.310854Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：Trending Template Lab-#CapCut #capcutpioneer #pioneertemplate #dance.mp4, beeble dawn-#celebrateme.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:40.310893Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：💎AnnMiel💎 🦋-Celebrate Me #icelebrateme #CapCut  #capcutpioneer #aitrend #aidance.mp4, Freya and Chris-I celebrate me 🥰❤️ #celebrateme #fyp #aibaby #tiktokvideo.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:40.311160Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：aitrendscc-#CapCut #pioneertemplate #capcutpioneer #icelebrateme #aitrend(3).mp4, Trending Template Lab-#CapCut #capcutpioneer #pioneertemplate #dance.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:43.400341Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：Capcut AI Hub-#CapCut #icelebrateme #aidance #capcutpioneer #pioneertemplate  I celebrate me filter.mp4, Heather Rose 🌹 ✨🥉-I celebrate me.  According to what AI thinks I look like 🤣 #CapCut #icelebrateme #tiktoktrend #fyp #gr.mp4, HottmessCrystalOfficial1-none_content_20260513150830_154.mp4, aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:43.521678Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：SparkleHeart-I celebrate me song challenge. #icelebrateme #celebrationtime  #songchallenge  #entertainmentforyou #songlo(1).mp4, Pink Duchess🌊🪷-I'm standing on me!!! #celebrate you.mp4, Capcut AI Hub-#CapCut #icelebrateme #aidance #capcutpioneer #pioneertemplate  I celebrate me filter.mp4, Freya and Chris-I celebrate me 🥰❤️ #celebrateme #fyp #aibaby #tiktokvideo.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:43.524208Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4, AMZGRACEchan👑Co-FnDrGLDrgnWRR-#CapCut #template  #AI #trendingsong  #i Celebrate me.mp4, SmileySacroVicente-#CapCut I celebrate  me.mp4, SparkleHeart-I celebrate me song challenge. #icelebrateme #celebrationtime  #songchallenge  #entertainmentforyou #songlo(1).mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:43.527872Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：Roro。-Create your _I Celebrate Me_ video with just one photo! Positive vibes, uplifting animations, and an aesthetic bac.mp4, Mr. Punch List The Handyman-This dang song has me all self motivated #sing #song #trend #ingarose #funny.mp4, HottmessCrystalOfficial1-none_content_20260513150818_778.mp4, aitrendscc-#CapCut #pioneertemplate #capcutpioneer #icelebrateme #aitrend(3).mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:43.536968Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：AI Templates_UK-#CapCut #capcutpioneer #pioneertemplate #dance #icelebrateme.MP4, Frank Sampsom-#CapCut #i celebrate me. #fyp #trend.MP4, none_user_name-They overlooked me. They doubted me. They counted me out. Now I_m dancing in rooms they said I_d nev_2026.MP4, none_user_name-Celebrate me #aichallenge #celebrateme #aidance#move2 #aivideo_20260513150711_853.MP4"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:46.646073Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (3).MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:46.851605Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (1).MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:46.859783Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：xxxxxx_副本4.MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:46.862016Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (1)_副本.MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:02:46.872068Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (5).MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.376196Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "当前视频时长: 22.23秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.429140Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "当前视频时长: 22.17秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.444968Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "当前视频时长: 22.23秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.511942Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "当前视频时长: 22.27秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.548982Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "当前视频时长: 22.27秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.692937Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "视频2 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.700173Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "视频1 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.761585Z",
+        "level": "info",
+        "video_index": 4,
+        "message": "视频4 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.785451Z",
+        "level": "info",
+        "video_index": 3,
+        "message": "视频3 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.812473Z",
+        "level": "info",
+        "video_index": 5,
+        "message": "视频5 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:03:16.812568Z",
+        "level": "info",
+        "video_index": 0,
+        "message": "执行完成: 任务完成"
+      }
+    ]
+  },
+  {
+    "id": "aa479b53-2fe5-4c6f-a202-7aa0c4c0d326",
+    "name": "Test",
+    "config_id": "eeb6610c-800a-403a-8304-a630a6303e65",
+    "task_name": "Test_2026-05-16_12-05-40",
+    "total_count": 2,
+    "completed_count": 2,
+    "failed_count": 0,
+    "failed_videos": [],
+    "status": "completed",
+    "output_folder": "/Users/bytedance/Desktop/video_test/视频输出/Test_2026-05-16_12-05-40",
+    "created_at": "2026-05-16T12:05:40.272408Z",
+    "started_at": null,
+    "completed_at": "2026-05-16T12:05:56.844522Z",
+    "error_message": null,
+    "current_video": 0,
+    "progress_steps": [
+      {
+        "id": "video_1__scan_1",
+        "name": "视频1 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:40.433594Z",
+        "completed_at": "2026-05-16T12:05:40.433594Z"
+      },
+      {
+        "id": "video_1__segment_1",
+        "name": "视频1 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:40.433596Z",
+        "completed_at": "2026-05-16T12:05:41.423250Z"
+      },
+      {
+        "id": "video_2__scan_1",
+        "name": "视频2 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:40.433688Z",
+        "completed_at": "2026-05-16T12:05:40.433688Z"
+      },
+      {
+        "id": "video_2__segment_1",
+        "name": "视频2 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:40.433691Z",
+        "completed_at": "2026-05-16T12:05:41.433750Z"
+      },
+      {
+        "id": "video_1__scan_2",
+        "name": "视频1 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:41.423260Z",
+        "completed_at": "2026-05-16T12:05:42.099192Z"
+      },
+      {
+        "id": "video_2__scan_2",
+        "name": "视频2 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:41.433755Z",
+        "completed_at": "2026-05-16T12:05:42.099162Z"
+      },
+      {
+        "id": "video_2__segment_2",
+        "name": "视频2 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:42.099164Z",
+        "completed_at": "2026-05-16T12:05:43.586086Z"
+      },
+      {
+        "id": "video_1__segment_2",
+        "name": "视频1 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:42.099193Z",
+        "completed_at": "2026-05-16T12:05:43.458798Z"
+      },
+      {
+        "id": "video_1__scan_3",
+        "name": "视频1 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:43.458808Z",
+        "completed_at": "2026-05-16T12:05:43.459058Z"
+      },
+      {
+        "id": "video_1__segment_3",
+        "name": "视频1 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:43.459058Z",
+        "completed_at": "2026-05-16T12:05:44.950409Z"
+      },
+      {
+        "id": "video_2__scan_3",
+        "name": "视频2 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:43.586097Z",
+        "completed_at": "2026-05-16T12:05:43.586336Z"
+      },
+      {
+        "id": "video_2__segment_3",
+        "name": "视频2 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:43.586337Z",
+        "completed_at": "2026-05-16T12:05:44.941431Z"
+      },
+      {
+        "id": "video_2__tutorial",
+        "name": "视频2 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:44.941837Z",
+        "completed_at": "2026-05-16T12:05:49.008728Z"
+      },
+      {
+        "id": "video_1__tutorial",
+        "name": "视频1 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:44.950447Z",
+        "completed_at": "2026-05-16T12:05:49.026924Z"
+      },
+      {
+        "id": "video_2__xfade",
+        "name": "视频2 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:49.124538Z",
+        "completed_at": "2026-05-16T12:05:51.589882Z"
+      },
+      {
+        "id": "video_1__xfade",
+        "name": "视频1 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:49.124862Z",
+        "completed_at": "2026-05-16T12:05:51.464412Z"
+      },
+      {
+        "id": "video_1__concat",
+        "name": "视频1 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:51.464445Z",
+        "completed_at": "2026-05-16T12:05:56.532233Z"
+      },
+      {
+        "id": "video_2__concat",
+        "name": "视频2 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:51.589914Z",
+        "completed_at": "2026-05-16T12:05:56.521677Z"
+      },
+      {
+        "id": "video_2__audio",
+        "name": "视频2 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:56.567492Z",
+        "completed_at": "2026-05-16T12:05:56.816378Z"
+      },
+      {
+        "id": "video_1__audio",
+        "name": "视频1 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:56.573830Z",
+        "completed_at": "2026-05-16T12:05:56.824102Z"
+      },
+      {
+        "id": "video_2",
+        "name": "视频2 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:56.843287Z",
+        "completed_at": "2026-05-16T12:05:56.843287Z"
+      },
+      {
+        "id": "video_1",
+        "name": "视频1 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:56.844454Z",
+        "completed_at": "2026-05-16T12:05:56.844454Z"
+      },
+      {
+        "id": "finish",
+        "name": "任务完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T12:05:56.844518Z",
+        "completed_at": "2026-05-16T12:05:56.844518Z"
+      }
+    ],
+    "logs": [
+      {
+        "timestamp": "2026-05-16T12:05:40.433587Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_-20260424162810.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:40.433686Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 3.28s；文件名：#CapCut_-20260424162810.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:42.099155Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：Freya and Chris-I celebrate me 🥰❤️ #celebrateme #fyp #aibaby #tiktokvideo.mp4, Mr. Punch List The Handyman-This dang song has me all self motivated #sing #song #trend #ingarose #funny.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:42.099188Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 3.28s，时长 2.82s；文件名：Pam' Ryze together-#celebrateme#takingback#fypシ゚viral #whatwillyoureveal_.mp4, AI Templates_UK-#CapCut #capcutpioneer #pioneertemplate #dance #icelebrateme.MP4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:43.459048Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：ArtemisCC-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aitrend.MP4, Heather Ortega-There's something powerful about finally celebrating yourself… after all the heartbreak, the insecurity,.mp4, aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4, SparkleHeart-I celebrate me song challenge. #icelebrateme #celebrationtime  #songchallenge  #entertainmentforyou #songlo(1).mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:43.586327Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 6.10s，时长 2.90s；文件名：💎AnnMiel💎 🦋-Celebrate Me #icelebrateme #CapCut  #capcutpioneer #aitrend #aidance.mp4, aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4, AI Templates_UK-#CapCut #capcutpioneer #pioneertemplate #dance #icelebrateme.MP4, Roro。-Create your _I Celebrate Me_ video with just one photo! Positive vibes, uplifting animations, and an aesthetic bac.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:44.941873Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：xxxxxx_副本6.MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:44.950476Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (1)_副本2.MOV"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:56.567485Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "当前视频时长: 22.23秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:56.573827Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "当前视频时长: 22.27秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:56.843284Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "视频2 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:56.844453Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "视频1 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T12:05:56.844518Z",
+        "level": "info",
+        "video_index": 0,
+        "message": "执行完成: 任务完成"
+      }
+    ]
+  },
+  {
+    "id": "3cc9cc0c-64fb-4097-b44e-f7c05aaee8ba",
+    "name": "Test",
+    "config_id": "eeb6610c-800a-403a-8304-a630a6303e65",
+    "task_name": "Test_2026-05-16_13-15-05",
+    "total_count": 2,
+    "completed_count": 2,
+    "failed_count": 0,
+    "failed_videos": [],
+    "status": "completed",
+    "output_folder": "/Users/bytedance/Desktop/video_test/视频输出/Test_2026-05-16_13-15-05",
+    "created_at": "2026-05-16T13:15:05.617961Z",
+    "started_at": null,
+    "completed_at": "2026-05-16T13:15:23.770990Z",
+    "error_message": null,
+    "current_video": 0,
+    "progress_steps": [
+      {
+        "id": "video_2",
+        "name": "视频2 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:05.949410Z",
+        "completed_at": "2026-05-16T13:15:23.770891Z"
+      },
+      {
+        "id": "video_1",
+        "name": "视频1 - 完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:05.949548Z",
+        "completed_at": "2026-05-16T13:15:23.508278Z"
+      },
+      {
+        "id": "video_2__scan_1",
+        "name": "视频2 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:05.950251Z",
+        "completed_at": "2026-05-16T13:15:06.091310Z"
+      },
+      {
+        "id": "video_1__scan_1",
+        "name": "视频1 - 扫描片段1素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:05.950258Z",
+        "completed_at": "2026-05-16T13:15:06.091394Z"
+      },
+      {
+        "id": "video_2__segment_1",
+        "name": "视频2 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:06.091312Z",
+        "completed_at": "2026-05-16T13:15:06.961064Z"
+      },
+      {
+        "id": "video_1__segment_1",
+        "name": "视频1 - 处理片段1",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:06.091395Z",
+        "completed_at": "2026-05-16T13:15:06.962351Z"
+      },
+      {
+        "id": "video_2__scan_2",
+        "name": "视频2 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:06.961076Z",
+        "completed_at": "2026-05-16T13:15:07.731954Z"
+      },
+      {
+        "id": "video_1__scan_2",
+        "name": "视频1 - 扫描片段2素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:06.962354Z",
+        "completed_at": "2026-05-16T13:15:07.731888Z"
+      },
+      {
+        "id": "video_1__segment_2",
+        "name": "视频1 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:07.731892Z",
+        "completed_at": "2026-05-16T13:15:08.351073Z"
+      },
+      {
+        "id": "video_2__segment_2",
+        "name": "视频2 - 处理片段2",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:07.731957Z",
+        "completed_at": "2026-05-16T13:15:08.224480Z"
+      },
+      {
+        "id": "video_2__scan_3",
+        "name": "视频2 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:08.224494Z",
+        "completed_at": "2026-05-16T13:15:08.224736Z"
+      },
+      {
+        "id": "video_2__segment_3",
+        "name": "视频2 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:08.224737Z",
+        "completed_at": "2026-05-16T13:15:09.093385Z"
+      },
+      {
+        "id": "video_1__scan_3",
+        "name": "视频1 - 扫描片段3素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:08.351086Z",
+        "completed_at": "2026-05-16T13:15:08.351297Z"
+      },
+      {
+        "id": "video_1__segment_3",
+        "name": "视频1 - 处理片段3",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:08.351298Z",
+        "completed_at": "2026-05-16T13:15:09.221022Z"
+      },
+      {
+        "id": "video_2__tutorial",
+        "name": "视频2 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:09.094133Z",
+        "completed_at": "2026-05-16T13:15:12.924922Z"
+      },
+      {
+        "id": "video_1__tutorial",
+        "name": "视频1 - 处理教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:09.221099Z",
+        "completed_at": "2026-05-16T13:15:12.940706Z"
+      },
+      {
+        "id": "video_1__xfade",
+        "name": "视频1 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:13.025412Z",
+        "completed_at": "2026-05-16T13:15:14.514134Z"
+      },
+      {
+        "id": "video_2__xfade",
+        "name": "视频2 - 拼接片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:13.025683Z",
+        "completed_at": "2026-05-16T13:15:14.387588Z"
+      },
+      {
+        "id": "video_2__concat",
+        "name": "视频2 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:14.387616Z",
+        "completed_at": "2026-05-16T13:15:18.223343Z"
+      },
+      {
+        "id": "video_1__concat",
+        "name": "视频1 - 拼接教程片段",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:14.514165Z",
+        "completed_at": "2026-05-16T13:15:18.216719Z"
+      },
+      {
+        "id": "video_1__supplement",
+        "name": "视频1 - 补充素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:18.269771Z",
+        "completed_at": "2026-05-16T13:15:23.231964Z"
+      },
+      {
+        "id": "video_2__supplement",
+        "name": "视频2 - 补充素材",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:18.270029Z",
+        "completed_at": "2026-05-16T13:15:23.493871Z"
+      },
+      {
+        "id": "video_1__audio",
+        "name": "视频1 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:23.238417Z",
+        "completed_at": "2026-05-16T13:15:23.485737Z"
+      },
+      {
+        "id": "video_2__audio",
+        "name": "视频2 - 添加音频",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:23.505676Z",
+        "completed_at": "2026-05-16T13:15:23.751590Z"
+      },
+      {
+        "id": "finish",
+        "name": "任务完成",
+        "status": "completed",
+        "error": null,
+        "started_at": "2026-05-16T13:15:23.770985Z",
+        "completed_at": "2026-05-16T13:15:23.770985Z"
+      }
+    ],
+    "logs": [
+      {
+        "timestamp": "2026-05-16T13:15:05.949415Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "工作线程 2 开始处理视频2"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:05.949549Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "工作线程 0 开始处理视频1"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:06.091304Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 2.28s；文件名：#CapCut_-20260424162812.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:06.091391Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段1 从文件夹 /Users/bytedance/Desktop/video_test/热点视频 选中素材 1 个，裁剪模式 Single，偏移 0.00s，时长 2.28s；文件名：#CapCut_omg_how_scar-20260428184637.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:07.731881Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 2.28s，时长 0.82s；文件名：aitrendscc-#CapCut #capcutpioneer #pioneertemplate #icelebrateme #aidance I celebrate me filter.mp4, HottmessCrystalOfficial1-none_content_20260513150818_778.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:07.731951Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段2 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 2 个，裁剪模式 Dual，偏移 2.28s，时长 0.82s；文件名：AMZGRACEchan👑Co-FnDrGLDrgnWRR-#CapCut #template  #AI #trendingsong  #i Celebrate me.mp4, none_user_name-Celebrate me #aichallenge #celebrateme #aidance#move2 #aivideo_20260513150711_853.MP4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:08.224728Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 3.10s，时长 1.90s；文件名：Trending Template Lab-#CapCut #capcutpioneer #pioneertemplate #dance.mp4, none_user_name-They overlooked me. They doubted me. They counted me out. Now I_m dancing in rooms they said I_d nev_2026.MP4, AI Templates_UK-#CapCut #capcutpioneer #pioneertemplate #dance #icelebrateme.MP4, LadyPinkBarbie-#icelebrateme #motivation #beyourself #enjoy #genx.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:08.351288Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "片段3 从文件夹 /Users/bytedance/Desktop/video_test/celebrate me素材4/素材 选中素材 4 个，裁剪模式 Quadrant，偏移 3.10s，时长 1.90s；文件名：Heather Ortega-There's something powerful about finally celebrating yourself… after all the heartbreak, the insecurity,.mp4, AI Templates_UK-#CapCut #capcutpioneer #pioneertemplate #dance #icelebrateme.MP4, beeble dawn-#celebrateme.mp4, LadyPinkBarbie-#icelebrateme #motivation #beyourself #enjoy #genx.mp4"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:09.094186Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：xxxxxx_副本3.MOV"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:09.221133Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "教程片段从文件夹 /Users/bytedance/Desktop/video_test/教程视频 选中素材文件名：5-13-1 (2).MOV"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.269754Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "当前视频时长: 18.17秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.269770Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "视频时长不足，需要补充 1.45 秒素材"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.269777Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "使用模板第一个片段素材 #CapCut_omg_how_scar-20260428184637.mp4 的尾部补充 1.45 秒"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.270012Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "当前视频时长: 18.23秒, 音频实际时长: 19.62秒（配置值 19.62秒）"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.270028Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "视频时长不足，需要补充 1.38 秒素材"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:18.270031Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "使用模板第一个片段素材 #CapCut_-20260424162812.mp4 的尾部补充 1.38 秒"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:23.508274Z",
+        "level": "info",
+        "video_index": 1,
+        "message": "视频1 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:23.770887Z",
+        "level": "info",
+        "video_index": 2,
+        "message": "视频2 处理成功"
+      },
+      {
+        "timestamp": "2026-05-16T13:15:23.770985Z",
+        "level": "info",
+        "video_index": 0,
+        "message": "执行完成: 任务完成"
+      }
+    ]
+  }
+]
