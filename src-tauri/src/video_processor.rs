@@ -1863,7 +1863,7 @@ fn process_single_mode(
     }
 
     // 教程片段：使用预分配的教程视频
-    let mut temp_with_tutorial_path: Option<PathBuf> = None;
+    let temp_with_tutorial_path: Option<PathBuf> = None;
     let mut original_tutorial_path: Option<PathBuf> = None;
     if let Some(ref video_path) = allocated_tutorial_video {
         let tutorial_step_id = format!("video_{}__tutorial", video_index);
@@ -2634,7 +2634,7 @@ fn add_subtitles(
                             let mut guard = child_arc.lock().unwrap();
                             match guard.as_mut() {
                                 Some(c) => c.try_wait(),
-                                None => None,
+                                None => Ok(None),
                             }
                         };
 
