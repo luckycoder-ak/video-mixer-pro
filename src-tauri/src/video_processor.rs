@@ -2638,7 +2638,7 @@ fn add_subtitles(
                             }
                         };
 
-                        if let Some(Ok(status)) = try_status {
+                        if let Ok(Some(status)) = try_status {
                             let output_result = {
                                 let mut guard = child_arc.lock().unwrap();
                                 guard.take().map(|c| c.wait_with_output())
@@ -2654,7 +2654,7 @@ fn add_subtitles(
                                 };
                                 break Err(format!("FFmpeg 执行失败: {}", stderr));
                             }
-                        } else if let Some(Err(e)) = try_status {
+                        } else if let Err(e) = try_status {
                             remove_child(task_id, &child_arc);
                             break Err(format!("等待 FFmpeg 失败: {}", e));
                         }
