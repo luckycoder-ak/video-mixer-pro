@@ -2197,7 +2197,7 @@ fn process_single_mode(
                 // 字幕添加失败不影响视频生成，记录日志后继续
                 warn!("视频{} 字幕添加失败: {}", video_index, e);
                 push_log(tasks, task_id, LogLevel::Warn, video_index, format!("字幕添加失败: {}", e));
-                push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None);
+                push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Error, Some(e.clone()));
                 // 复制原始视频到输出路径
                 fs::copy(&temp_with_tutorial_path, &output_path)
                     .map_err(|e| format!("复制视频文件失败: {}", e))?;
@@ -2291,6 +2291,7 @@ fn parse_srt_content(content: &str) -> Result<Vec<SrtEntry>, String> {
 fn escape_drawtext_text(text: &str) -> String {
     text.replace('\\', "\\\\")
         .replace('\'', "\\'")
+        .replace(',', "\\,")
         .replace(':', "\\:")
         .replace('%', "\\%")
         .replace('{', "\\{")
@@ -2473,7 +2474,8 @@ fn add_subtitles(
     // 提取内置字体，通过 fontsdir 指定给 subtitles 滤镜
     {
         let app_temp_dir = get_app_temp_dir();
-        let temp_subtitle_path = app_temp_dir.join(format!("temp_subtitle_{}.srt", Uuid::new_v4()));
+        let temp_ext = if is_ass_format { "ass" } else { "srt" };
+        let temp_subtitle_path = app_temp_dir.join(format!("temp_subtitle_{}.{}", Uuid::new_v4(), temp_ext));
 
         fs::copy(&subtitle_path_buf, &temp_subtitle_path).map_err(|e| format!("复制字幕文件失败: {}", e))?;
         let temp_subtitle_str = temp_subtitle_path.to_string_lossy().to_string();
@@ -2496,9 +2498,9 @@ fn add_subtitles(
         let mut filter_options = Vec::new();
         let escaped_path = escape_ffmpeg_path(&temp_subtitle_str);
 
-        // fonts_dir 需要转义处理：冒号替换（: → \:），反斜杠改正斜杠（\ → /）
+        // fonts_dir 需要转义处理：先替换反斜杠，再转义冒号（避免 \: 中的 \ 被替换）
         let fonts_escaped = fonts_dir.as_ref().map(|d| {
-            d.replace(':', "\\:").replace('\\', "/")
+            d.replace('\\', "/").replace(':', "\\:")
         });
 
         if let Some(ref fonts) = fonts_escaped {
@@ -2568,23 +2570,132 @@ fn add_subtitles(
         }
     }
 
-    // 方案2：对于非ASS格式，回退到 drawtext 方案（硬编码字幕）
+    // 方案3：在字幕文件所在目录执行 FFmpeg，使用相对路径调用 subtitles/ass 滤镜
+    // 灵感来自 video_subtitle crate：通过在字幕文件目录下运行 ffmpeg，
+    // 滤镜中只使用字幕文件名（相对路径），天然避开 Windows 路径中的冒号转义问题
+    {
+        info!("回退到 subtitles/ass 相对路径方案");
+        if let Some(subtitle_dir) = subtitle_path_buf.parent() {
+            let subtitle_file_name = subtitle_path_buf
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            let ffmpeg_exe = find_ffmpeg_executable();
+
+            let filter_str = if is_ass_format {
+                format!("ass={}", subtitle_file_name)
+            } else {
+                format!("subtitles={}:force_style='Fontname=Noto Sans CJK SC':si=0", subtitle_file_name)
+            };
+
+            info!(
+                "在目录下执行 ffmpeg + 相对路径滤镜: dir={}, filter={}",
+                subtitle_dir.display(),
+                filter_str
+            );
+
+            let mut cmd = Command::new(&ffmpeg_exe);
+            apply_hidden_process_startup(&mut cmd);
+            let child_result = cmd
+                .args([
+                    "-hide_banner",
+                    "-loglevel", "info",
+                    "-i", &input_str,
+                    "-vf", &filter_str,
+                    "-c:v", &encoder.video_codec,
+                    "-c:a", "copy",
+                    "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
+                    "-y",
+                    &output_str,
+                ])
+                .current_dir(subtitle_dir)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+
+            match child_result {
+                Ok(mut child) => {
+                    let child_arc = Arc::new(Mutex::new(Some(child)));
+                    add_child(task_id, child_arc.clone());
+
+                    // 轮询等待，支持取消
+                    let scheme3_result = loop {
+                        if cancel.load(Ordering::SeqCst) {
+                            if let Ok(mut guard) = child_arc.lock() {
+                                if let Some(c) = guard.as_mut() {
+                                    let _ = c.kill();
+                                }
+                            }
+                            break Err("已取消".to_string());
+                        }
+
+                        let try_status = {
+                            let mut guard = child_arc.lock().unwrap();
+                            match guard.as_mut() {
+                                Some(c) => c.try_wait(),
+                                None => None,
+                            }
+                        };
+
+                        if let Some(Ok(status)) = try_status {
+                            let output_result = {
+                                let mut guard = child_arc.lock().unwrap();
+                                guard.take().map(|c| c.wait_with_output())
+                            };
+                            remove_child(task_id, &child_arc);
+
+                            if status.success() {
+                                break Ok(());
+                            } else {
+                                let stderr = match output_result {
+                                    Some(Ok(out)) => String::from_utf8_lossy(&out.stderr).to_string(),
+                                    _ => String::new(),
+                                };
+                                break Err(format!("FFmpeg 执行失败: {}", stderr));
+                            }
+                        } else if let Some(Err(e)) = try_status {
+                            remove_child(task_id, &child_arc);
+                            break Err(format!("等待 FFmpeg 失败: {}", e));
+                        }
+
+                        thread::sleep(Duration::from_millis(120));
+                    };
+
+                    match scheme3_result {
+                        Ok(()) => {
+                            info!("subtitles/ass 相对路径方案成功!");
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            error!("subtitles/ass 相对路径方案失败: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("启动 FFmpeg 失败: {}", e);
+                }
+            }
+        } else {
+            warn!("无法获取字幕文件所在目录，跳过相对路径方案");
+        }
+    }
+
+    // 方案4：对于非ASS格式，回退到 drawtext 方案（硬编码字幕）
     if !is_ass_format {
         info!("回退到 drawtext 字幕方案（备选方案）");
         let srt_content = match fs::read_to_string(subtitle_path) {
             Ok(c) => c,
             Err(e) => {
                 error!("读取字幕文件失败: {}", e);
-                fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-                return Ok(());
+                return Err(format!("读取字幕文件失败: {}", e));
             }
         };
         let entries = match parse_srt_content(&srt_content) {
             Ok(e) => e,
             Err(e) => {
                 error!("SRT 解析失败: {}", e);
-                fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-                return Ok(());
+                return Err(format!("SRT 解析失败: {}", e));
             }
         };
 
@@ -2593,14 +2704,13 @@ fn add_subtitles(
             Ok(p) => p,
             Err(e) => {
                 error!("无法获取字体文件: {}", e);
-                fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-                return Ok(());
+                return Err(format!("无法获取字体文件: {}", e));
             }
         };
-        
+
         let fontfile_str = fontfile.to_string_lossy().to_string();
         info!("使用字体路径: {}", fontfile_str);
-        
+
         let drawtext_filter = build_drawtext_subtitle_filter(&entries, &fontfile_str);
         info!("drawtext 滤镜已构建，共 {} 条字幕", entries.len());
 
@@ -2626,14 +2736,12 @@ fn add_subtitles(
             }
             Err(e) => {
                 error!("drawtext 字幕方案失败: {}", e);
+                return Err(format!("drawtext 字幕方案失败: {}", e));
             }
         }
     }
 
-    // 所有方案都失败，复制原视频
-    warn!("所有字幕方案都失败，复制原视频不添加字幕");
-    fs::copy(input_path, output_path).map_err(|e| format!("复制视频文件失败: {}", e))?;
-    Ok(())
+    Err("所有字幕方案都失败".to_string())
 
 }
 
