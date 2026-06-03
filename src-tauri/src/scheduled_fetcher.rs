@@ -128,6 +128,7 @@ pub struct TikTokEntry {
     pub repost_count: i64,
     pub save_count: i64,
     pub view_count: i64,
+    pub duration: i64,
 }
 
 /// yt-dlp 调用错误分类。
@@ -214,10 +215,10 @@ pub fn validate_iid_format(iid: &str) -> Result<(), String> {
 /**
  解析 yt-dlp `--print` 的多行制表符输出。
 
- 每行严格 8 列，按顺序：
- `id\ttimestamp\tuploader\tlike\tcomment\trepost\tsave\tview`。
+ 每行严格 9 列，按顺序：
+ `id\ttimestamp\tuploader\tlike\tcomment\trepost\tsave\tview\tduration`。
  缺失字段（NA / 空 / 非数字）按 0 处理。
- 解析失败的行（列数不足 8）会被静默跳过。
+ 解析失败的行（列数不足 9）会被静默跳过。
 
  参数:
  - `stdout`: yt-dlp 进程标准输出全文。
@@ -236,7 +237,7 @@ pub fn parse_entries(stdout: &str) -> Vec<TikTokEntry> {
             continue;
         }
         let cols: Vec<&str> = trimmed.split('\t').collect();
-        if cols.len() < 8 {
+        if cols.len() < 9 {
             continue;
         }
         let id = cols[0].trim().to_string();
@@ -250,6 +251,7 @@ pub fn parse_entries(stdout: &str) -> Vec<TikTokEntry> {
         let repost_count = parse_int_or_zero(cols[5]);
         let save_count = parse_int_or_zero(cols[6]);
         let view_count = parse_int_or_zero(cols[7]);
+        let duration = parse_int_or_zero(cols[8]);
 
         result.push(TikTokEntry {
             id,
@@ -260,6 +262,7 @@ pub fn parse_entries(stdout: &str) -> Vec<TikTokEntry> {
             repost_count,
             save_count,
             view_count,
+            duration,
         });
     }
     result
@@ -463,6 +466,7 @@ pub fn write_csv_new_file(
             "转发数",
             "收藏数",
             "播放数",
+            "视频时长",
             "uploader",
             "作者粉丝数",
             "video_url",
@@ -491,6 +495,7 @@ pub fn write_csv_new_file(
             excel_text_formula(&entry.repost_count.to_string()),
             excel_text_formula(&entry.save_count.to_string()),
             excel_text_formula(&entry.view_count.to_string()),
+            excel_text_formula(&entry.duration.to_string()),
             excel_text_formula(&entry.uploader),
             if follower_raw.is_empty() {
                 String::new()
@@ -532,10 +537,10 @@ pub fn format_local_time(timestamp: i64) -> String {
 }
 
 /**
- yt-dlp `--print` 字段拼装：固定 8 列、TAB 分隔。
+ yt-dlp `--print` 字段拼装：固定 9 列、TAB 分隔。
 */
 pub const YT_DLP_PRINT_FORMAT: &str =
-    "%(id)s\t%(timestamp)s\t%(uploader)s\t%(like_count)s\t%(comment_count)s\t%(repost_count)s\t%(save_count)s\t%(view_count)s";
+    "%(id)s\t%(timestamp)s\t%(uploader)s\t%(like_count)s\t%(comment_count)s\t%(repost_count)s\t%(save_count)s\t%(view_count)s\t%(duration)s";
 
 /**
  拼装 yt-dlp 调用所需的参数列表（不含可执行文件本体）。
@@ -1019,19 +1024,21 @@ mod tests {
 
     #[test]
     fn parse_entries_should_handle_normal_lines() {
-        let stdout = "abc123\t1717000000\tuser_a\t100\t20\t5\t8\t9999\n\
-                      def456\t1717000100\tuser_b\t200\t30\t6\t9\t10000\n";
+        let stdout = "abc123\t1717000000\tuser_a\t100\t20\t5\t8\t9999\t60\n\
+                      def456\t1717000100\tuser_b\t200\t30\t6\t9\t10000\t45\n";
         let entries = parse_entries(stdout);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].id, "abc123");
         assert_eq!(entries[0].timestamp, 1717000000);
         assert_eq!(entries[0].like_count, 100);
         assert_eq!(entries[1].uploader, "user_b");
+        assert_eq!(entries[0].duration, 60);
+        assert_eq!(entries[1].duration, 45);
     }
 
     #[test]
     fn parse_entries_should_skip_short_or_empty_lines() {
-        let stdout = "\n   \nbadrow\twithonly2\nabc123\t1717000000\tuser_a\t1\t2\t3\t4\t5\n";
+        let stdout = "\n   \nbadrow\twithonly2\nabc123\t1717000000\tuser_a\t1\t2\t3\t4\t5\t30\n";
         let entries = parse_entries(stdout);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, "abc123");
@@ -1039,7 +1046,7 @@ mod tests {
 
     #[test]
     fn parse_entries_should_treat_na_and_invalid_as_zero() {
-        let stdout = "abc\tNA\tuser_a\tNA\t\t-\tabc\t100\n";
+        let stdout = "abc\tNA\tuser_a\tNA\t\t-\tabc\t100\tNA\n";
         let entries = parse_entries(stdout);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].timestamp, 0);
@@ -1048,11 +1055,12 @@ mod tests {
         assert_eq!(entries[0].repost_count, 0);
         assert_eq!(entries[0].save_count, 0);
         assert_eq!(entries[0].view_count, 100);
+        assert_eq!(entries[0].duration, 0);
     }
 
     #[test]
     fn parse_entries_should_skip_id_na_or_empty() {
-        let stdout = "\t1\tu\t1\t1\t1\t1\t1\nNA\t1\tu\t1\t1\t1\t1\t1\n";
+        let stdout = "\t1\tu\t1\t1\t1\t1\t1\t1\nNA\t1\tu\t1\t1\t1\t1\t1\t1\n";
         let entries = parse_entries(stdout);
         assert!(entries.is_empty());
     }
@@ -1069,6 +1077,7 @@ mod tests {
                 repost_count: 0,
                 save_count: 0,
                 view_count: 0,
+                duration: 30,
             },
             TikTokEntry {
                 id: "a".into(),
@@ -1079,6 +1088,7 @@ mod tests {
                 repost_count: 0,
                 save_count: 0,
                 view_count: 0,
+                duration: 60,
             },
             TikTokEntry {
                 id: "b".into(),
@@ -1089,6 +1099,7 @@ mod tests {
                 repost_count: 0,
                 save_count: 0,
                 view_count: 0,
+                duration: 45,
             },
         ];
         let result = dedup_within_run(entries);
@@ -1134,6 +1145,7 @@ mod tests {
             repost_count: 1,
             save_count: 1,
             view_count: 1,
+            duration: 1,
         }
     }
 
@@ -1178,6 +1190,7 @@ mod tests {
                 repost_count: 3,
                 save_count: 4,
                 view_count: 9999,
+                duration: 60,
             },
             TikTokEntry {
                 id: "vid,2".into(),
@@ -1188,6 +1201,7 @@ mod tests {
                 repost_count: 0,
                 save_count: 0,
                 view_count: 0,
+                duration: 0,
             },
         ];
         let started_at = chrono::TimeZone::with_ymd_and_hms(&Local, 2026, 5, 31, 15, 30, 12)
@@ -1201,10 +1215,10 @@ mod tests {
         let bytes = fs::read(&path).unwrap();
         assert_eq!(&bytes[..3], &[0xEF, 0xBB, 0xBF], "应有 UTF-8 BOM");
         let body = String::from_utf8(bytes[3..].to_vec()).unwrap();
-        // 新表头：包含中文统计列与「作者粉丝数」
+        // 新表头：包含中文统计列与「作者粉丝数」「视频时长」
         assert!(
-            body.starts_with("video_id,publish_time,点赞数,评论数,转发数,收藏数,播放数,uploader,作者粉丝数,video_url,fetched_at"),
-            "表头应使用新中文列名 + 作者粉丝数；实际：{}",
+            body.starts_with("video_id,publish_time,点赞数,评论数,转发数,收藏数,播放数,视频时长,uploader,作者粉丝数,video_url,fetched_at"),
+            "表头应使用新中文列名 + 作者粉丝数 + 视频时长；实际：{}",
             body.lines().next().unwrap_or("")
         );
         assert!(body.contains("\r\n"), "应使用 CRLF 行尾");
@@ -1212,6 +1226,8 @@ mod tests {
         // 即原始公式 ="vid1" → CSV 字面写为 "=""vid1"""
         assert!(body.contains("\"=\"\"vid1\"\"\""), "video_id 应被 Excel 文本公式包裹");
         assert!(body.contains("\"=\"\"100\"\"\""), "数值列应被 Excel 文本公式包裹");
+        // 视频时长：60 秒被写入
+        assert!(body.contains("\"=\"\"60\"\"\""), "视频时长应被写入");
         // 作者粉丝数：user_a 命中 12345
         assert!(body.contains("\"=\"\"12345\"\"\""), "user_a 的粉丝数应被写入");
         // fetched_at 写入正确格式（被公式包裹）
