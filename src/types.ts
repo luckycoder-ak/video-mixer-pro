@@ -7,6 +7,52 @@ export interface TemplateSegment {
   scale_percent: number;
 }
 
+/** 字幕样式配置 */
+export interface SubtitleStyle {
+  /** 字号 */
+  fontsize: number;
+  /** 字体颜色（FFmpeg 颜色格式：white / 0xRRGGBB） */
+  fontcolor: string;
+  /** 描边宽度 */
+  borderw: number;
+  /** 描边颜色 */
+  bordercolor: string;
+  /** 阴影/发光色 */
+  shadowcolor: string;
+  /** 阴影 X 偏移 */
+  shadowx: number;
+  /** 阴影 Y 偏移 */
+  shadowy: number;
+  /** 水平位置表达式 */
+  x: string;
+  /** 垂直位置表达式 */
+  y: string;
+  /** 行间距 */
+  line_spacing: number;
+  /** 启用逐字渐变 */
+  enable_gradient: boolean;
+  /** 渐变起始色 */
+  gradient_color1: string;
+  /** 渐变结束色 */
+  gradient_color2: string;
+}
+
+const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  fontsize: 36,
+  fontcolor: 'white',
+  borderw: 3,
+  bordercolor: 'black',
+  shadowcolor: 'white',
+  shadowx: 2,
+  shadowy: 2,
+  x: '(w-tw)/2',
+  y: 'h-th-100',
+  line_spacing: 8,
+  enable_gradient: false,
+  gradient_color1: '0xFF6B6B',
+  gradient_color2: '0x4ECDC4',
+};
+
 /** 全局应用设置（高级设置 Tab 中可配置）。 */
 export interface AppSettings {
   /** 飞书自定义机器人 Webhook URL；空字符串表示未配置，所有通知静默跳过。 */
@@ -21,6 +67,7 @@ export interface VideoConfig {
   audio_path: string;
   audio_duration: number;
   subtitle_path: string;
+  subtitle_style: SubtitleStyle;
   template_duration: number;
   segment_count: number;
   template_segments: TemplateSegment[];
@@ -126,6 +173,7 @@ export const createDefaultConfig = (): VideoConfig => ({
   audio_path: '',
   audio_duration: 0,
   subtitle_path: '',
+  subtitle_style: { ...DEFAULT_SUBTITLE_STYLE },
   template_duration: 150,
   segment_count: 3,
   template_segments: [

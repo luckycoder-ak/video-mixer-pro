@@ -1662,6 +1662,7 @@ fn process_single_mode(
     audio_path: &str,
     audio_duration: f32,
     subtitle_path: &str,
+    subtitle_style: &crate::config::SubtitleStyle,
     output_dir: &PathBuf,
     output_filename: &str,
     // 每个 source_folder 独立的已用集合；仅保证单次任务内同文件夹不重复选中。
@@ -2188,7 +2189,7 @@ fn process_single_mode(
         let sub_step_id = format!("video_{}__subtitle", video_index);
         push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Running, None);
         push_log(tasks, task_id, LogLevel::Info, video_index, format!("开始添加字幕: {}", subtitle_path));
-        match add_subtitles(task_id, cancel, &temp_with_tutorial_path, subtitle_path, &output_path) {
+        match add_subtitles(task_id, cancel, &temp_with_tutorial_path, subtitle_path, &output_path, subtitle_style) {
             Ok(()) => {
                 push_log(tasks, task_id, LogLevel::Info, video_index, format!("字幕添加成功: {}", output_path.file_name().and_then(|n| n.to_str()).unwrap_or_default()));
                 push_step(tasks, task_id, &sub_step_id, &format!("视频{} - 添加字幕", video_index), StepStatus::Completed, None);
@@ -2313,29 +2314,105 @@ fn escape_font_path(font_path: &str) -> String {
     }
 }
 
-fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str) -> String {
+fn build_drawtext_subtitle_filter(entries: &[SrtEntry], fontfile: &str, style: &crate::config::SubtitleStyle) -> String {
     let mut parts: Vec<String> = Vec::new();
     let escaped_font_path = escape_font_path(fontfile);
 
     for entry in entries {
-        let escaped_text = escape_drawtext_text(&entry.text);
         let start = entry.start_secs;
         let end = entry.end_secs;
 
-        // 字幕参数优化：
-        // - fontsize=36: 适合大多数视频的字体大小
-        // - fontcolor=white: 白色字体
-        // - borderw=3: 黑色描边，让字幕更清晰
-        // - bordercolor=black: 描边颜色
-        // - x=(w-tw)/2: 水平居中
-        // - y=h-th-100: 底部往上100像素，给多行字幕留空间
-        // - line_spacing=8: 行间距
-        // - enable='between(t,{},{})': 在指定时间段显示
-        // 逗号在 FFmpeg 滤镜链中是分隔符，必须用 \\, 转义
-        let drawtext = format!(
-            "drawtext=fontfile='{}':text='{}':fontsize=36:fontcolor=white:borderw=3:bordercolor=black:x=(w-tw)/2:y=h-th-100:line_spacing=8:enable='between(t\\,{}\\,{})'",
-            escaped_font_path, escaped_text, start, end
-        );
+        let drawtext = if style.enable_gradient && !style.gradient_color1.is_empty() && !style.gradient_color2.is_empty() {
+            // 逐字渐变模式：每个字符单独渲染，使用 fontcolor_expr 表达式
+            let chars: Vec<char> = entry.text.chars().collect();
+            if chars.is_empty() {
+                continue;
+            }
+            let mut char_filters: Vec<String> = Vec::new();
+            let n = chars.len() as f64;
+
+            // 颜色插值：将 0xRRGGBB 字符串解析为 (r, g, b)
+            let parse_hex_color = |hex: &str| -> (u8, u8, u8) {
+                let hex = hex.trim_start_matches("0x").trim_start_matches("0X");
+                if hex.len() != 6 {
+                    return (255, 255, 255);
+                }
+                let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(255);
+                let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(255);
+                let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(255);
+                (r, g, b)
+            };
+
+            let (r1, g1, b1) = parse_hex_color(&style.gradient_color1);
+            let (r2, g2, b2) = parse_hex_color(&style.gradient_color2);
+
+            for (i, ch) in chars.iter().enumerate() {
+                let i_f64 = i as f64;
+                // 计算当前字符的颜色（线性插值）
+                let t = if n <= 1.0 { 0.0 } else { i_f64 / (n - 1.0) };
+                let r = (r1 as f64 + (r2 as f64 - r1 as f64) * t).round() as u32;
+                let g = (g1 as f64 + (g2 as f64 - g1 as f64) * t).round() as u32;
+                let b = (b1 as f64 + (b2 as f64 - b1 as f64) * t).round() as u32;
+                let color_expr = format!("0x{:02X}{:02X}{:02X}", r, g, b);
+
+                let escaped_char = escape_drawtext_text(&ch.to_string());
+                let enable_expr = format!("between(t\\,{}\\,{})", start, end);
+
+                let fontcolor_param = format!("fontcolor={}", color_expr);
+
+                let char_drawtext = format!(
+                    "drawtext=fontfile='{}':text='{}':fontsize={}:{}:borderw={}:bordercolor={}:shadowcolor={}:shadowx={}:shadowy={}:x=({})+{}*(tw/{}):y={}:line_spacing={}:enable='{}'",
+                    escaped_font_path,
+                    escaped_char,
+                    style.fontsize,
+                    fontcolor_param,
+                    style.borderw,
+                    style.bordercolor,
+                    style.shadowcolor,
+                    style.shadowx,
+                    style.shadowy,
+                    style.x,
+                    i_f64,
+                    n.max(1.0),
+                    style.y,
+                    style.line_spacing,
+                    enable_expr,
+                );
+                char_filters.push(char_drawtext);
+            }
+
+            char_filters.join(",")
+        } else {
+            // 普通模式：整行字幕用固定颜色
+            let escaped_text = escape_drawtext_text(&entry.text);
+
+            let fontcolor_param = if style.fontcolor.starts_with("0x") || style.fontcolor.starts_with("0X") {
+                style.fontcolor.clone()
+            } else {
+                // 命名颜色（white, yellow 等）
+                style.fontcolor.clone()
+            };
+
+            let drawtext = format!(
+                "drawtext=fontfile='{}':text='{}':fontsize={}:fontcolor={}:borderw={}:bordercolor={}:shadowcolor={}:shadowx={}:shadowy={}:x={}:y={}:line_spacing={}:enable='between(t\\,{}\\,{})'",
+                escaped_font_path,
+                escaped_text,
+                style.fontsize,
+                fontcolor_param,
+                style.borderw,
+                style.bordercolor,
+                style.shadowcolor,
+                style.shadowx,
+                style.shadowy,
+                style.x,
+                style.y,
+                style.line_spacing,
+                start,
+                end
+            );
+            drawtext
+        };
+
         parts.push(drawtext);
     }
 
@@ -2441,12 +2518,72 @@ fn get_bundled_font_path() -> std::io::Result<PathBuf> {
     Ok(font_temp_path)
 }
 
+/// 为 subtitles/ass 滤镜构建 force_style 字符串
+fn build_subtitle_force_style(style: &crate::config::SubtitleStyle) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    parts.push("Fontname=Noto Sans CJK SC".to_string());
+    parts.push(format!("FontSize={}", style.fontsize));
+    // 颜色：subtitles 滤镜使用 ASS 颜色格式 RRGGBB（不带 0x 前缀）
+    if !style.fontcolor.is_empty() {
+        let color = if style.fontcolor.starts_with("0x") || style.fontcolor.starts_with("0X") {
+            style.fontcolor.trim_start_matches("0x").trim_start_matches("0X").to_string()
+        } else {
+            // 命名颜色映射到 hex
+            match style.fontcolor.to_lowercase().as_str() {
+                "white" => "FFFFFF".to_string(),
+                "yellow" => "FFFF00".to_string(),
+                "red" => "FF0000".to_string(),
+                "green" => "00FF00".to_string(),
+                "blue" => "0000FF".to_string(),
+                "black" => "000000".to_string(),
+                _ => "FFFFFF".to_string(),
+            }
+        };
+        parts.push(format!("PrimaryColour=&H{}", color));
+    }
+    if style.borderw > 0 {
+        let bcolor = if style.bordercolor.starts_with("0x") || style.bordercolor.starts_with("0X") {
+            style.bordercolor.trim_start_matches("0x").trim_start_matches("0X").to_string()
+        } else {
+            match style.bordercolor.to_lowercase().as_str() {
+                "black" => "000000".to_string(),
+                "white" => "FFFFFF".to_string(),
+                _ => "000000".to_string(),
+            }
+        };
+        parts.push(format!("Outline={}", style.borderw));
+        parts.push(format!("OutlineColour=&H{}", bcolor));
+    }
+    // 阴影
+    if style.shadowx != 0 || style.shadowy != 0 {
+        let scol = if style.shadowcolor.starts_with("0x") || style.shadowcolor.starts_with("0X") {
+            style.shadowcolor.trim_start_matches("0x").trim_start_matches("0X").to_string()
+        } else {
+            match style.shadowcolor.to_lowercase().as_str() {
+                "white" => "FFFFFF".to_string(),
+                "black" => "000000".to_string(),
+                _ => "FFFFFF".to_string(),
+            }
+        };
+        parts.push(format!("Shadow={}", (style.shadowx.abs() + style.shadowy.abs()).max(1)));
+        parts.push(format!("BackColour=&H{}", scol));
+    }
+    // 对齐方式（基于位置表达式推测）
+    if style.x == "(w-tw)/2" {
+        if style.y.contains("h-th") {
+            parts.push("Alignment=2".to_string()); // 底部居中
+        }
+    }
+    parts.join(",")
+}
+
 fn add_subtitles(
     task_id: &str,
     cancel: &Arc<AtomicBool>,
     input_path: &PathBuf,
     subtitle_path: &str,
     output_path: &PathBuf,
+    subtitle_style: &crate::config::SubtitleStyle,
 ) -> Result<(), String> {
     info!("添加字幕: subtitle_path={}", subtitle_path);
 
@@ -2503,18 +2640,19 @@ fn add_subtitles(
             d.replace('\\', "/").replace(':', "\\:")
         });
 
+        let style_str = build_subtitle_force_style(subtitle_style);
         if let Some(ref fonts) = fonts_escaped {
             filter_options.push(if is_ass_format {
                 format!("ass=filename={}:fontsdir={}", escaped_path, fonts)
             } else {
-                format!("subtitles=filename={}:fontsdir={}:force_style='Fontname=Noto Sans CJK SC':si=0", escaped_path, fonts)
+                format!("subtitles=filename={}:fontsdir={}:force_style='{}':si=0", escaped_path, fonts, style_str)
             });
 
             let path_with_quotes = temp_subtitle_str.replace('\\', "/");
             filter_options.push(if is_ass_format {
                 format!("ass=filename='{}':fontsdir={}", path_with_quotes, fonts)
             } else {
-                format!("subtitles=filename='{}':fontsdir={}:force_style='Fontname=Noto Sans CJK SC':si=0", path_with_quotes, fonts)
+                format!("subtitles=filename='{}':fontsdir={}:force_style='{}':si=0", path_with_quotes, fonts, style_str)
             });
         }
 
@@ -2522,14 +2660,14 @@ fn add_subtitles(
         filter_options.push(if is_ass_format {
             format!("ass=filename={}", escaped_path)
         } else {
-            format!("subtitles=filename={}:si=0", escaped_path)
+            format!("subtitles=filename={}:force_style='{}':si=0", escaped_path, style_str)
         });
 
         let path_with_quotes = temp_subtitle_str.replace('\\', "/");
         filter_options.push(if is_ass_format {
             format!("ass=filename='{}'", path_with_quotes)
         } else {
-            format!("subtitles=filename='{}':si=0", path_with_quotes)
+            format!("subtitles=filename='{}':force_style='{}':si=0", path_with_quotes, style_str)
         });
 
         let mut subtitles_success = false;
@@ -2582,10 +2720,11 @@ fn add_subtitles(
                 .unwrap_or("");
             let ffmpeg_exe = find_ffmpeg_executable();
 
+            let style_str = build_subtitle_force_style(subtitle_style);
             let filter_str = if is_ass_format {
                 format!("ass={}", subtitle_file_name)
             } else {
-                format!("subtitles={}:force_style='Fontname=Noto Sans CJK SC':si=0", subtitle_file_name)
+                format!("subtitles={}:force_style='{}':si=0", subtitle_file_name, style_str)
             };
 
             info!(
@@ -2711,8 +2850,8 @@ fn add_subtitles(
         let fontfile_str = fontfile.to_string_lossy().to_string();
         info!("使用字体路径: {}", fontfile_str);
 
-        let drawtext_filter = build_drawtext_subtitle_filter(&entries, &fontfile_str);
-        info!("drawtext 滤镜已构建，共 {} 条字幕", entries.len());
+        let drawtext_filter = build_drawtext_subtitle_filter(&entries, &fontfile_str, subtitle_style);
+        info!("drawtext 滤镜已构建，共 {} 条字幕，启用渐变: {}", entries.len(), subtitle_style.enable_gradient);
 
         let drawtext_args: Vec<String> = vec![
             "-hide_banner".to_string(),
@@ -3032,6 +3171,7 @@ pub fn create_task(app: tauri::AppHandle, state: tauri::State<AppState>, config_
             &config_clone.audio_path,
             config_clone.audio_duration,
             &config_clone.subtitle_path,
+            &config_clone.subtitle_style,
             &output_dir,
             &output_filename,
             &mut local_used_per_folder,

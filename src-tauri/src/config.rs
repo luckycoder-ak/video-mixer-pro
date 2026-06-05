@@ -15,6 +15,129 @@ fn default_scale_percent() -> u32 {
     51
 }
 
+/// 默认字幕字号
+fn default_subtitle_fontsize() -> u32 {
+    36
+}
+
+/// 默认字幕颜色（白色）
+fn default_subtitle_fontcolor() -> String {
+    "white".to_string()
+}
+
+/// 默认字幕描边宽度
+fn default_subtitle_borderw() -> u32 {
+    3
+}
+
+/// 默认字幕描边颜色
+fn default_subtitle_bordercolor() -> String {
+    "black".to_string()
+}
+
+/// 默认字幕水平位置
+fn default_subtitle_x() -> String {
+    "(w-tw)/2".to_string()
+}
+
+/// 默认字幕垂直位置（底部往上 100 像素）
+fn default_subtitle_y() -> String {
+    "h-th-100".to_string()
+}
+
+/// 默认字幕阴影色（白色）
+fn default_subtitle_shadowcolor() -> String {
+    "white".to_string()
+}
+
+/// 默认字幕阴影偏移（实现辉光）
+fn default_subtitle_shadowx() -> i32 {
+    2
+}
+
+fn default_subtitle_shadowy() -> i32 {
+    2
+}
+
+/// 默认字幕渐变色开关（逐字渐变）
+fn default_subtitle_enable_gradient() -> bool {
+    false
+}
+
+/// 渐变起始色（FFmpeg drawtext 表达式格式，如 0x00FF00）
+fn default_subtitle_gradient_color1() -> String {
+    "0xFF6B6B".to_string()
+}
+
+/// 渐变结束色
+fn default_subtitle_gradient_color2() -> String {
+    "0x4ECDC4".to_string()
+}
+
+/// 字幕样式配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubtitleStyle {
+    /// 字号
+    #[serde(default = "default_subtitle_fontsize")]
+    pub fontsize: u32,
+    /// 字体颜色（FFmpeg 颜色格式：white / 0xRRGGBB）
+    #[serde(default = "default_subtitle_fontcolor")]
+    pub fontcolor: String,
+    /// 描边宽度
+    #[serde(default = "default_subtitle_borderw")]
+    pub borderw: u32,
+    /// 描边颜色
+    #[serde(default = "default_subtitle_bordercolor")]
+    pub bordercolor: String,
+    /// 阴影色
+    #[serde(default = "default_subtitle_shadowcolor")]
+    pub shadowcolor: String,
+    /// 阴影 X 偏移（正值 = 右移，负值 = 左移；配合实现辉光/发光效果）
+    #[serde(default = "default_subtitle_shadowx")]
+    pub shadowx: i32,
+    /// 阴影 Y 偏移（正值 = 下移，负值 = 上移）
+    #[serde(default = "default_subtitle_shadowy")]
+    pub shadowy: i32,
+    /// 水平位置（FFmpeg 表达式，如 (w-tw)/2 = 水平居中）
+    #[serde(default = "default_subtitle_x")]
+    pub x: String,
+    /// 垂直位置（FFmpeg 表达式，如 h-th-50 = 底部）
+    #[serde(default = "default_subtitle_y")]
+    pub y: String,
+    /// 行间距
+    #[serde(default)]
+    pub line_spacing: u32,
+    /// 启用逐字渐变
+    #[serde(default = "default_subtitle_enable_gradient")]
+    pub enable_gradient: bool,
+    /// 渐变起始色
+    #[serde(default = "default_subtitle_gradient_color1")]
+    pub gradient_color1: String,
+    /// 渐变结束色
+    #[serde(default = "default_subtitle_gradient_color2")]
+    pub gradient_color2: String,
+}
+
+impl Default for SubtitleStyle {
+    fn default() -> Self {
+        Self {
+            fontsize: default_subtitle_fontsize(),
+            fontcolor: default_subtitle_fontcolor(),
+            borderw: default_subtitle_borderw(),
+            bordercolor: default_subtitle_bordercolor(),
+            shadowcolor: default_subtitle_shadowcolor(),
+            shadowx: default_subtitle_shadowx(),
+            shadowy: default_subtitle_shadowy(),
+            x: default_subtitle_x(),
+            y: default_subtitle_y(),
+            line_spacing: 8,
+            enable_gradient: default_subtitle_enable_gradient(),
+            gradient_color1: default_subtitle_gradient_color1(),
+            gradient_color2: default_subtitle_gradient_color2(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSegment {
     pub segment_index: usize,
@@ -44,6 +167,8 @@ pub struct VideoConfig {
     pub audio_path: String,
     pub audio_duration: f32,
     pub subtitle_path: String,
+    #[serde(default)]
+    pub subtitle_style: SubtitleStyle,
     pub template_duration: f32,
     pub segment_count: usize,
     pub template_segments: Vec<TemplateSegment>,
@@ -71,6 +196,7 @@ impl VideoConfig {
             audio_path: String::new(),
             audio_duration: 0.0,
             subtitle_path: String::new(),
+            subtitle_style: SubtitleStyle::default(),
             template_duration: 150.0,
             segment_count: 3,
             template_segments: Vec::new(),

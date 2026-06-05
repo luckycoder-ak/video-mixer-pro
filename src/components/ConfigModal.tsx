@@ -18,6 +18,8 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
   const [expandedSegments, setExpandedSegments] = useState<Set<number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTab, setCurrentTab] = useState<TabType>('basic');
+  const [subtitleStyleExpanded, setSubtitleStyleExpanded] = useState(false);
+  const [gradientExpanded, setGradientExpanded] = useState(false);
 
   const tabs: { key: TabType; label: string; icon: string }[] = [
     { key: 'basic', label: '基础信息配置', icon: '⚙️' },
@@ -100,6 +102,13 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
     const newSegments = [...formData.template_segments];
     newSegments[index] = { ...newSegments[index], [field]: value };
     handleInputChange('template_segments', newSegments);
+  };
+
+  const handleSubtitleStyleChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      subtitle_style: { ...prev.subtitle_style, [field]: value },
+    }));
   };
 
   const handleSelectAudio = async () => {
@@ -354,6 +363,285 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
           )}
         </div>
       </div>
+
+      {/* 字幕样式配置 */}
+      {formData.subtitle_path && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div
+            className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors"
+            onClick={() => setSubtitleStyleExpanded(!subtitleStyleExpanded)}
+          >
+            <h3 className="font-semibold text-gray-800 text-sm">🎨 字幕样式配置</h3>
+            <span className={`text-gray-500 text-xs transition-transform ${subtitleStyleExpanded ? 'rotate-180' : ''}`}>▼</span>
+          </div>
+
+          {subtitleStyleExpanded && (
+            <div className="p-4 space-y-4">
+              {/* 基础样式 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">字号</label>
+                  <input
+                    type="number"
+                    value={formData.subtitle_style.fontsize}
+                    onChange={(e) => handleSubtitleStyleChange('fontsize', parseInt(e.target.value) || 36)}
+                    min="12"
+                    max="120"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">描边宽度</label>
+                  <input
+                    type="number"
+                    value={formData.subtitle_style.borderw}
+                    onChange={(e) => handleSubtitleStyleChange('borderw', parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="10"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">字体颜色</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={formData.subtitle_style.fontcolor.startsWith('0x') ? `#${formData.subtitle_style.fontcolor.slice(2)}` : formData.subtitle_style.fontcolor === 'white' ? '#FFFFFF' : formData.subtitle_style.fontcolor === 'black' ? '#000000' : formData.subtitle_style.fontcolor === 'yellow' ? '#FFFF00' : '#FFFFFF'}
+                      onChange={(e) => {
+                        const hex = e.target.value.replace('#', '').toUpperCase();
+                        handleSubtitleStyleChange('fontcolor', `0x${hex}`);
+                      }}
+                      className="w-10 h-10 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={formData.subtitle_style.fontcolor}
+                      onChange={(e) => handleSubtitleStyleChange('fontcolor', e.target.value)}
+                      placeholder="white 或 0xRRGGBB"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">描边颜色</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={formData.subtitle_style.bordercolor.startsWith('0x') ? `#${formData.subtitle_style.bordercolor.slice(2)}` : formData.subtitle_style.bordercolor === 'white' ? '#FFFFFF' : formData.subtitle_style.bordercolor === 'black' ? '#000000' : '#000000'}
+                      onChange={(e) => {
+                        const hex = e.target.value.replace('#', '').toUpperCase();
+                        handleSubtitleStyleChange('bordercolor', `0x${hex}`);
+                      }}
+                      className="w-10 h-10 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={formData.subtitle_style.bordercolor}
+                      onChange={(e) => handleSubtitleStyleChange('bordercolor', e.target.value)}
+                      placeholder="black 或 0xRRGGBB"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">阴影/发光色</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="color"
+                      value={formData.subtitle_style.shadowcolor.startsWith('0x') ? `#${formData.subtitle_style.shadowcolor.slice(2)}` : formData.subtitle_style.shadowcolor === 'white' ? '#FFFFFF' : formData.subtitle_style.shadowcolor === 'black' ? '#000000' : '#FFFFFF'}
+                      onChange={(e) => {
+                        const hex = e.target.value.replace('#', '').toUpperCase();
+                        handleSubtitleStyleChange('shadowcolor', `0x${hex}`);
+                      }}
+                      className="w-10 h-10 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={formData.subtitle_style.shadowcolor}
+                      onChange={(e) => handleSubtitleStyleChange('shadowcolor', e.target.value)}
+                      placeholder="white 或 0xRRGGBB"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">阴影偏移 (X, Y)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={formData.subtitle_style.shadowx}
+                      onChange={(e) => handleSubtitleStyleChange('shadowx', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    />
+                    <input
+                      type="number"
+                      value={formData.subtitle_style.shadowy}
+                      onChange={(e) => handleSubtitleStyleChange('shadowy', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 位置配置 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">水平位置</label>
+                  <select
+                    value={formData.subtitle_style.x}
+                    onChange={(e) => handleSubtitleStyleChange('x', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  >
+                    <option value="(w-tw)/2">水平居中</option>
+                    <option value="10">左对齐 (偏移10px)</option>
+                    <option value="w-tw-10">右对齐 (偏移10px)</option>
+                    <option value="(w-tw)/4">左1/4处</option>
+                    <option value="3*(w-tw)/4">右3/4处</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">垂直位置</label>
+                  <select
+                    value={formData.subtitle_style.y}
+                    onChange={(e) => handleSubtitleStyleChange('y', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                  >
+                    <option value="h-th-100">底部 (距底100px)</option>
+                    <option value="h-th-50">底部 (距底50px)</option>
+                    <option value="h-th-20">底部 (距底20px)</option>
+                    <option value="h/2">屏幕中央</option>
+                    <option value="100">顶部 (距顶100px)</option>
+                    <option value="h-th-150">底部 (距底150px)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">行间距</label>
+                <input
+                  type="number"
+                  value={formData.subtitle_style.line_spacing}
+                  onChange={(e) => handleSubtitleStyleChange('line_spacing', parseInt(e.target.value) || 0)}
+                  min="0"
+                  max="50"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* 逐字渐变配置 */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div
+                  className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => setGradientExpanded(!gradientExpanded)}
+                >
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={formData.subtitle_style.enable_gradient}
+                      onChange={(e) => handleSubtitleStyleChange('enable_gradient', e.target.checked)}
+                      className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <span className="font-medium text-gray-700">启用逐字渐变</span>
+                  </label>
+                  <span className={`text-gray-500 text-xs transition-transform ${gradientExpanded ? 'rotate-180' : ''}`}>▼</span>
+                </div>
+
+                {gradientExpanded && formData.subtitle_style.enable_gradient && (
+                  <div className="p-3 space-y-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">渐变起始色</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={formData.subtitle_style.gradient_color1.startsWith('0x') ? `#${formData.subtitle_style.gradient_color1.slice(2)}` : '#FF6B6B'}
+                            onChange={(e) => {
+                              const hex = e.target.value.replace('#', '').toUpperCase();
+                              handleSubtitleStyleChange('gradient_color1', `0x${hex}`);
+                            }}
+                            className="w-10 h-10 rounded border border-gray-300 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={formData.subtitle_style.gradient_color1}
+                            onChange={(e) => handleSubtitleStyleChange('gradient_color1', e.target.value)}
+                            placeholder="0xFF6B6B"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">渐变结束色</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={formData.subtitle_style.gradient_color2.startsWith('0x') ? `#${formData.subtitle_style.gradient_color2.slice(2)}` : '#4ECDC4'}
+                            onChange={(e) => {
+                              const hex = e.target.value.replace('#', '').toUpperCase();
+                              handleSubtitleStyleChange('gradient_color2', `0x${hex}`);
+                            }}
+                            className="w-10 h-10 rounded border border-gray-300 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={formData.subtitle_style.gradient_color2}
+                            onChange={(e) => handleSubtitleStyleChange('gradient_color2', e.target.value)}
+                            placeholder="0x4ECDC4"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 渐变预览 */}
+                    <div className="p-3 bg-gray-100 rounded-lg">
+                      <div
+                        className="text-center font-bold text-lg"
+                        style={{
+                          background: `linear-gradient(to right, ${formData.subtitle_style.gradient_color1.startsWith('0x') ? `#${formData.subtitle_style.gradient_color1.slice(2)}` : '#FF6B6B'}, ${formData.subtitle_style.gradient_color2.startsWith('0x') ? `#${formData.subtitle_style.gradient_color2.slice(2)}` : '#4ECDC4'})`,
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          backgroundClip: 'text',
+                        }}
+                      >
+                        字幕渐变效果预览
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 重置按钮 */}
+              <button
+                onClick={() => {
+                  handleSubtitleStyleChange('fontsize', 36);
+                  handleSubtitleStyleChange('fontcolor', 'white');
+                  handleSubtitleStyleChange('borderw', 3);
+                  handleSubtitleStyleChange('bordercolor', 'black');
+                  handleSubtitleStyleChange('shadowcolor', 'white');
+                  handleSubtitleStyleChange('shadowx', 2);
+                  handleSubtitleStyleChange('shadowy', 2);
+                  handleSubtitleStyleChange('x', '(w-tw)/2');
+                  handleSubtitleStyleChange('y', 'h-th-100');
+                  handleSubtitleStyleChange('line_spacing', 8);
+                  handleSubtitleStyleChange('enable_gradient', false);
+                  handleSubtitleStyleChange('gradient_color1', '0xFF6B6B');
+                  handleSubtitleStyleChange('gradient_color2', '0x4ECDC4');
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                ↺ 重置为默认值
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">输出文件夹</label>
