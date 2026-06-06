@@ -364,6 +364,127 @@ export const ConfigModal: React.FC<Props> = ({ config, onSave, onClose }) => {
         </div>
       </div>
 
+      {/* 字幕样式实时预览 */}
+      {formData.subtitle_path && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-900">
+          <div className="px-4 py-2 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+            <h3 className="font-semibold text-gray-300 text-sm">👁️ 字幕预览</h3>
+            <span className="text-xs text-gray-500">实时预览（近似 FFmpeg 渲染效果）</span>
+          </div>
+          <div className="flex justify-center py-4">
+            <div className="relative w-[180px] h-[320px] bg-gradient-to-b from-gray-800 to-gray-900 rounded-lg overflow-hidden shadow-2xl">
+              {/* 模拟视频画面 */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center opacity-30">
+                  <div className="text-3xl mb-2">🎬</div>
+                  <div className="text-xs text-gray-400">视频画面</div>
+                </div>
+              </div>
+              {/* 模拟字幕 */}
+              <div
+                className="absolute left-1/2 px-1"
+                style={{
+                  bottom: (() => {
+                    const y = formData.subtitle_style.y;
+                    if (y === 'h-th-100' || y === 'h-th-100') return '80px';
+                    if (y === 'h-th-50') return '40px';
+                    if (y === 'h-th-20') return '20px';
+                    if (y === 'h-th-150') return '130px';
+                    if (y === 'h/2') return '50%';
+                    if (y === '100') return undefined;
+                    if (y === 'w-tw-10') return '80px';
+                    if (y === '(w-tw)/4') return '80px';
+                    if (y === '3*(w-tw)/4') return '80px';
+                    return '80px';
+                  })(),
+                  top: (() => {
+                    const y = formData.subtitle_style.y;
+                    if (y === '100') return '90px';
+                    return undefined;
+                  })(),
+                  transform: (() => {
+                    const x = formData.subtitle_style.x;
+                    if (x === '(w-tw)/2') return 'translateX(-50%)';
+                    if (x === 'w-tw-10') return 'none';
+                    return 'translateX(-50%)';
+                  })(),
+                  textAlign: (() => {
+                    const x = formData.subtitle_style.x;
+                    if (x === '10') return 'left';
+                    if (x === 'w-tw-10') return 'right';
+                    return 'center';
+                  })(),
+                  width: (() => {
+                    const x = formData.subtitle_style.x;
+                    if (x === '10') return 'calc(100% - 20px)';
+                    if (x === 'w-tw-10') return 'calc(100% - 20px)';
+                    return '90%';
+                  })(),
+                  left: (() => {
+                    const x = formData.subtitle_style.x;
+                    if (x === '10') return '10px';
+                    if (x === 'w-tw-10') return '10px';
+                    return '50%';
+                  })(),
+                  fontSize: `${Math.max(10, formData.subtitle_style.fontsize * 0.5)}px`,
+                  color: (() => {
+                    const c = formData.subtitle_style.fontcolor;
+                    if (c.startsWith('0x') || c.startsWith('0X')) return `#${c.slice(2)}`;
+                    const namedColors: Record<string, string> = { white: '#FFFFFF', black: '#000000', yellow: '#FFFF00', red: '#FF0000', green: '#00FF00', blue: '#0000FF' };
+                    return namedColors[c.toLowerCase()] || '#FFFFFF';
+                  })(),
+                  textShadow: [
+                    formData.subtitle_style.borderw > 0 && (() => {
+                      const bc = (() => {
+                        const c = formData.subtitle_style.bordercolor;
+                        if (c.startsWith('0x') || c.startsWith('0X')) return `#${c.slice(2)}`;
+                        const namedColors: Record<string, string> = { black: '#000000', white: '#FFFFFF' };
+                        return namedColors[c.toLowerCase()] || '#000000';
+                      })();
+                      return `-${formData.subtitle_style.borderw}px -${formData.subtitle_style.borderw}px 0 ${bc}, ${formData.subtitle_style.borderw}px -${formData.subtitle_style.borderw}px 0 ${bc}, -${formData.subtitle_style.borderw}px ${formData.subtitle_style.borderw}px 0 ${bc}, ${formData.subtitle_style.borderw}px ${formData.subtitle_style.borderw}px 0 ${bc}`;
+                    })(),
+                    (formData.subtitle_style.shadowx !== 0 || formData.subtitle_style.shadowy !== 0) && (() => {
+                      const sc = (() => {
+                        const c = formData.subtitle_style.shadowcolor;
+                        if (c.startsWith('0x') || c.startsWith('0X')) return `#${c.slice(2)}`;
+                        const namedColors: Record<string, string> = { white: '#FFFFFF', black: '#000000' };
+                        return namedColors[c.toLowerCase()] || '#FFFFFF';
+                      })();
+                      return `${formData.subtitle_style.shadowx}px ${formData.subtitle_style.shadowy}px 4px ${sc}`;
+                    })(),
+                  ].filter(Boolean).join(', ') || 'none',
+                  lineHeight: 1.4 + (formData.subtitle_style.line_spacing || 8) / 100,
+                  fontWeight: 'bold',
+                }}
+              >
+                {formData.subtitle_style.enable_gradient ? (
+                  <span
+                    style={{
+                      background: `linear-gradient(to right, ${formData.subtitle_style.gradient_color1.startsWith('0x') ? `#${formData.subtitle_style.gradient_color1.slice(2)}` : '#FF6B6B'}, ${formData.subtitle_style.gradient_color2.startsWith('0x') ? `#${formData.subtitle_style.gradient_color2.slice(2)}` : '#4ECDC4'})`,
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      backgroundClip: 'text',
+                      filter: formData.subtitle_style.borderw > 0 ? (() => {
+                        const bc = (() => {
+                          const c = formData.subtitle_style.bordercolor;
+                          if (c.startsWith('0x') || c.startsWith('0X')) return `#${c.slice(2)}`;
+                          return '#000000';
+                        })();
+                        return `drop-shadow(0 0 ${formData.subtitle_style.borderw}px ${bc})`;
+                      })() : 'none',
+                    }}
+                  >
+                    这是一段字幕预览文字
+                  </span>
+                ) : (
+                  '这是一段字幕预览文字'
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 字幕样式配置 */}
       {formData.subtitle_path && (
         <div className="border border-gray-200 rounded-xl overflow-hidden">
